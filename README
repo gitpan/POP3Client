@@ -50,6 +50,13 @@ The documentation is in the code in POD format.  To read it, use
 pod2html.
 
 
+I'M SURE MY USERNAME AND PASSWORD ARE CORRECT BUT IT WON'T CONNECT.
+WHAT'S WRONG?
+
+Most likely, the server is claiming to support APOP, but for some
+reason, doesn't.  Try adding 'AUTH_MODE=>PASS' to the constructor.
+
+
 Written by Sean Dowd <pop3client@dowds.net>
 
 

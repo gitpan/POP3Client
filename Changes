@@ -1,6 +1,17 @@
 Revision history for Perl extension Mail::POP3Client.
 
-This is version 2.6 of Mail::POP3Client.
+This is version 2.7 of Mail::POP3Client.
+
+2.7  2000/0
+	+ clarify documentation regarding APOP.
+	+ Add support for BEST mode when authenticating.  BEST will
+     	  attempt APOP and drop back to PASS on failure.  This is the
+	  default for version 2.7 so if you only want APOP, you must
+	  specify that.
+	+ Fixed problem with some servers not liking 'LIST ' as a
+	  command.
+	+ Added BodyToFile and HeadAndBodyToFile, which will write
+ 	  their output to the given file handle.
 
 2.6  2000/02/15
 	+ some servers were not sending any message after the +OK for

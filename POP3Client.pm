@@ -1,5 +1,5 @@
 #******************************************************************************
-# $Id: POP3Client.pm,v 2.6 2000/02/17 13:47:35 ssd Exp $
+# $Id: POP3Client.pm,v 2.7 2000/09/25 00:29:03 ssd Exp $
 #
 # Description:  POP3Client module - acts as interface to POP3 server
 # Author:       Sean Dowd <pop3client@dowds.net>
@@ -29,8 +29,8 @@ require Exporter;
 	
 );
 
-my $ID =q( $Id: POP3Client.pm,v 2.6 2000/02/17 13:47:35 ssd Exp $ );
-$VERSION = substr q$Revision: 2.6 $, 10;
+my $ID =q( $Id: POP3Client.pm,v 2.7 2000/09/25 00:29:03 ssd Exp $ );
+$VERSION = substr q$Revision: 2.7 $, 10;
 
 
 # Preloaded methods go here.
@@ -40,7 +40,7 @@ $VERSION = substr q$Revision: 2.6 $, 10;
 #* new Mail::POP3Client( USER => user,
 #*                       PASSWORD => pass,
 #*                       HOST => host,
-#*                       AUTH_MODE => [APOP|PASS],
+#*                       AUTH_MODE => [BEST|APOP|PASS],
 #*                       TIMEOUT => 30,
 #*                       DEBUG => 1 );
 #* OR (deprecated)
@@ -60,7 +60,7 @@ sub new
 	      MESG => 'OK',
 	      BANNER => '',
 	      MESG_ID => '',
-	      AUTH_MODE => 'APOP',
+	      AUTH_MODE => 'BEST',
 	      EOL => "\015\012",
 	      TIMEOUT => 60,
 	      STRIPCR => 0,
@@ -340,15 +340,35 @@ sub Connect
 
 
 #******************************************************************************
-#* login to the POP server.  If the AUTH_MODE is set to APOP an the
-#* server supports it, it will use APOP.  Otherwise uid and password are
-#* sent in clear text.
+#* login to the POP server.  If the AUTH_MODE is set to BEST, and the server
+#* appears to support APOP, it will try APOP, if that fails, then it will try
+#* PASS.  If the AUTH_MODE is set to APOP, and the server appears to supports
+#* APOP, it will use APOP or it will fail to log in.
+#* Otherwise password is sent in clear text.
 #******************************************************************************
 sub Login
 {
   my $me= shift;
-  if ($me->{AUTH_MODE} eq 'APOP' && $me->{MESG_ID}) { $me->Login_APOP(); }
-  else { $me->Login_Pass(); }
+
+  if ($me->{AUTH_MODE} eq 'BEST') {
+      if ($me->{MESG_ID}) {
+        my $retval = $me->Login_APOP();
+
+        return($retval) if ($me->State eq 'TRANSACTION');
+        }
+      }
+  elsif ($me->{AUTH_MODE} eq 'APOP') {
+
+      return(0) if (!$me->{MESG_ID});   # fail if the server does not support APOP
+
+      return($me->Login_APOP());
+      }
+  elsif ($me->{AUTH_MODE} ne 'PASS') {
+      $me->Message("Programing error. AUTH_MODE (".$me->{AUTH_MODE}.") not BEST | APOP | PASS.");
+      return(0);
+      }
+
+  return($me->Login_Pass());
 }
 
 
@@ -465,6 +485,35 @@ sub HeadAndBody
 
 
 #******************************************************************************
+#* get the head and body of a message and write it to a file handle.
+#* Sends the raw data: does no CR/NL stripping or mapping.
+#******************************************************************************
+sub HeadAndBodyToFile
+{
+  my $me = shift;
+  my $fh = shift;
+  my $num = shift;
+  my $body = '';
+  my $s = $me->Socket();
+  
+  $me->_sockprint( "RETR $num", $me->EOL );
+  my $line = $me->_sockread();
+  chomp $line;
+  $line =~ /^\+OK/ or $me->Message("Bad return from RETR: $line") and return;
+  $line =~ /^\+OK (\d+) / and my $buflen = $1;
+  
+  while (1) {
+    $line = $me->_sockread();
+    last if $line =~ /^\.\s*$/;
+    # convert any '..' at the start of a line to '.'  
+    $line =~ s/^\.\././;
+    print $fh $line;
+  } 
+} # end BodyToFile
+
+
+
+#******************************************************************************
 #* get the body of a message
 #******************************************************************************
 sub Body
@@ -499,6 +548,41 @@ sub Body
 
 
 #******************************************************************************
+#* get the body of a message and write it to a file handle.  Sends the raw data:
+#* does no CR/NL stripping or mapping.
+#******************************************************************************
+sub BodyToFile
+{
+  my $me = shift;
+  my $fh = shift;
+  my $num = shift;
+  my $body = '';
+  my $s = $me->Socket();
+  
+  $me->_sockprint( "RETR $num", $me->EOL );
+  my $line = $me->_sockread();
+  chomp $line;
+  $line =~ /^\+OK/ or $me->Message("Bad return from RETR: $line") and return;
+  $line =~ /^\+OK (\d+) / and my $buflen = $1;
+  
+  # skip the header
+  do {
+    $line = $me->_sockread();
+  } until $line =~ /^\s*$/;
+  
+  while (1) {
+    $line = $me->_sockread();
+    chomp $line;
+    last if $line =~ /^\.\s*$/;
+    # convert any '..' at the start of a line to '.'  
+    $line =~ s/^\.\././;
+    print $fh $line, "\n";
+  } 
+} # end BodyToFile
+
+
+
+#******************************************************************************
 #* handle a STAT command - returns the number of messages in the box
 #******************************************************************************
 sub POPStat {
@@ -528,8 +612,16 @@ sub List {
   
   my @retarray = ();
   my $ret = '';
-  
-  $me->_sockprint( "$CMD $num", $me->EOL );
+
+  # apparently there is a server that cannot handle 'LIST '.
+  if ( $num )
+    {
+      $me->_sockprint( "$CMD $num", $me->EOL );
+    }
+  else
+    {
+      $me->_sockprint( "$CMD", $me->EOL );
+    }
   my $line = $me->_sockread();
   $line =~ /^\+OK/ or $me->Message("$line") and return;
   if ($num) {
@@ -587,6 +679,14 @@ sub ListArray {
 #******************************************************************************
 sub Retrieve {
   return HeadAndBody( @_ );
+}
+
+#******************************************************************************
+#* retrieve the given message number to the given file handle- uses
+#* HeadAndBodyToFile
+#******************************************************************************
+sub RetrieveToFile {
+  return HeadAndBodyToFile( @_ );
 }
 
 
@@ -765,7 +865,7 @@ New style (shown with defaults):
                          PASSWORD  => "",
                          HOST      => "pop3",
                          PORT      => 110,
-                         AUTH_MODE => 'PASS',
+                         AUTH_MODE => 'BEST',
                          DEBUG     => 0,
                          TIMEOUT   => 60,
                        );
@@ -788,7 +888,7 @@ PORT is the POP server port (default = 110)
 DEBUG - any non-null, non-zero value turns on debugging (default = 0)
 
 =item *
-AUTH_MODE - pass 'APOP' to attempt APOP (MD5) authorization. (default is 'PASS')
+AUTH_MODE - pass 'APOP' to force APOP (MD5) authorization. (default is 'BEST')
 
 =item *
 TIMEOUT - set a timeout value for socket operations (default = 60)
@@ -805,7 +905,7 @@ commands return multiple lines as an array in an array context.
 =over 8
 
 =item I<new>( USER => 'user', PASSWORD => 'password', HOST => 'host',
-              PORT => 110, DEBUG => 0, AUTH_MODE => 'PASS', TIMEOUT => 60 )
+              PORT => 110, DEBUG => 0, AUTH_MODE => 'BEST', TIMEOUT => 60 )
 
 Construct a new POP3 connection with this.  You should use the
 hash-style constructor.  B<The old positional constructor is
@@ -820,13 +920,20 @@ new will attempt to Connect to and Login to the POP3 server if you
 supply a USER and PASSWORD.  If you do not supply them in the
 constructor, you will need to call Connect yourself.
 
-The valid values for AUTH_MODE are 'PASS' and 'APOP'.  APOP implies
-that an MD5 checksum will be used instrad of passing your password in
-cleartext.  However, B<if the server does not support APOP, the
-cleartext method will be used.  Be careful.>
+The valid values for AUTH_MODE are 'BEST', 'PASS' and 'APOP'.  BEST
+says to try APOP if the server appears to support it and it can be
+used to successfully log on, otherwise revert to PASS.  APOP implies
+that an MD5 checksum will be used instead of sending your password in
+cleartext.  However, B<if the server does not claim to support APOP,
+the cleartext method will be used.  Be careful.> There are a few
+servers that will send a timestamp in the banner greeting, but APOP
+will not work with them (for instance if the server does not know your
+password in cleartext).  If you think your authentication information
+is correct, run in DEBUG mode and look for errors regarding
+authorization.  If so, then you may have to use 'PASS' for that server.
 
-If you enable debugging with DEBUG => 1, messages about command will
-go to STDERR.
+If you enable debugging with DEBUG => 1, socket traffic will be echoed
+to STDERR.
 
 Another warning, it's impossible to differentiate between a timeout
 and a failure.
@@ -847,6 +954,16 @@ Dennis Moroney <dennis@hub.iwl.net>.
 Get the body of the specified message, either as an array of lines or
 as a string, depending on context.
 
+=item I<BodyToFile>( FILE_HANDLE, MESSAGE_NUMBER )
+
+Get the body of the specified message and write it to the given file handle.
+my $fh = new IO::Handle();
+$fh->fdopen( fileno( STDOUT ), "w" );
+$pop->BodyToFile( $fh, 1 );
+
+Does no stripping of NL or CR.
+
+
 =item I<HeadAndBody>( MESSAGE_NUMBER [, PREVIEW_LINES ] )
 
 Get the head and body of the specified message, either as an array of
@@ -864,9 +981,24 @@ first 10 lines of the message (if supported by the POP3 server).
 
 =back
 
+=item I<HeadAndBodyToFile>( FILE_HANDLE, MESSAGE_NUMBER )
+
+Get the head and body of the specified message and write it to the given file handle.
+my $fh = new IO::Handle();
+$fh->fdopen( fileno( STDOUT ), "w" );
+$pop->HeadAndBodyToFile( $fh, 1 );
+
+Does no stripping of NL or CR.  Since you have to create the file
+handle yourself, there is no HeadAndBodyToFile or HeadToFile.
+
+
 =item I<Retrieve>( MESSAGE_NUMBER )
 
 Same as HeadAndBody.
+
+=item I<RetrieveToFile>( FILE_HANDLE, MESSAGE_NUMBER )
+
+Same as HeadAndBodyToFile.
 
 =item I<Delete>( MESSAGE_NUMBER )
 
@@ -912,9 +1044,20 @@ The internal state of the connection: DEAD, AUTHORIZATION, TRANSACTION.
 Return the results of a POP3 STAT command.  Sets the size of the
 mailbox.
 
-=item I<List>
+=item I<List>([message_number])
 
-Return a list of sizes of each message.
+Returns the size of the given message number when called with an
+argument using the following format:
+
+   <message_number> <size_in_bytes>
+
+If message_number is omitted, List behaves the same as ListArray,
+returning an indexed array of the sizes of each message in the same
+format.
+
+You can parse the size in bytes using split:
+ ($msgnum, $size) = split ' ', $pop -> List( n )
+
 
 =item I<ListArray>
 

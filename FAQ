@@ -1,0 +1,57 @@
+Frequently Asked Questions Regarding Mail::POP3Client
+==============================================================
+
+1. Does the module handle attachments?
+2. How do I install it if my ISP won't?
+3. Can I check to see if I have new mail?
+4. How do I tell if the connection worked or not?
+
+
+Answers
+==============================================================
+
+1. Does the module handle attachments?
+
+The module downloads the message in raw format.  It does not do
+anything special with attachments.  To do that, use MIME::Parser or
+something like it.  MIME::Parser has a method called parse_data that
+accepts and array of lines.  Pass it the results of the Body method as
+follows:
+
+my @lines = $pop->Body( $n );
+$parser->parse_data( @lines );
+
+
+2. How do I install it if my ISP won't?
+
+You have 2 choices.  You can go through the installation process using
+a prefix option to the make command like this:
+
+	% perl Makefile.PL prefix=/some/other/directory
+
+then just make; make install as above.
+
+Or you can create a directory called Mail somewhere and just put
+POP3Client.pm in there.  You will then have to put this directory into
+your include path (@INC) either on the command line or in you code
+(i.e. push(@INC,"/path/to/directory"); ).  You need to include the
+directory above Mail.
+
+Choice 1 is better because you can track what modules you have
+installed but if you don't have command line access you'll have to go
+with choice 2.
+
+
+3. Can I check to see if I have new mail?
+
+Not directly.  You'd have to keep track of the messages read from the
+last connection (using Uidl).  It's not something the protocol supports.
+
+
+4. How do I tell if the connection worked or not?
+
+Check the Count() method.  A value of -1 means that the connection
+failed.  You will have access to the other methods on the object to
+see the Message, etc.  This will be changed sometime in the future so
+that the constructor (or the Connect() method) will return undef or 0
+on failure.
