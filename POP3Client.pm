@@ -1,10 +1,10 @@
 #******************************************************************************
-# $Id: POP3Client.pm,v 2.9 2001/08/18 14:45:24 ssd Exp $
+# $Id: POP3Client.pm,v 2.10 2001/09/08 20:22:47 ssd Exp $
 #
 # Description:  POP3Client module - acts as interface to POP3 server
 # Author:       Sean Dowd <pop3client@dowds.net>
 #
-# Copyright (c) 1999  Sean Dowd.  All rights reserved.
+# Copyright (c) 1999,2000,2001  Sean Dowd.  All rights reserved.
 # This module is free software; you can redistribute it and/or modify
 # it under the same terms as Perl itself.
 #
@@ -29,8 +29,8 @@ require Exporter;
 	
 );
 
-my $ID =q( $Id: POP3Client.pm,v 2.9 2001/08/18 14:45:24 ssd Exp $ );
-$VERSION = substr q$Revision: 2.9 $, 10;
+my $ID =q( $Id: POP3Client.pm,v 2.10 2001/09/08 20:22:47 ssd Exp $ );
+$VERSION = substr q$Revision: 2.10 $, 10;
 
 
 # Preloaded methods go here.
@@ -72,7 +72,7 @@ sub new
   bless( $self, $classname );
   $self->_init( @_ );
 
-  if ( $self->User() && $self->Pass() )
+  if ( defined($self->User()) && defined($self->Pass()) )
     {
       $self->Connect();
     }
@@ -364,7 +364,7 @@ sub Connect
   $me->Message($msg);
   
   $me->State('AUTHORIZATION');
-  $me->User() and $me->Pass() and $me->Login();
+  defined($me->User()) and defined($me->Pass()) and $me->Login();
   
 } # end Connect
 
