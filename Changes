@@ -1,7 +1,17 @@
 Revision history for Perl extension Mail::POP3Client.
 
-This is version 2.4 of Mail::POP3Client.
+This is version 2.5 of Mail::POP3Client.
 
+2.5  1999/??/??
+	+ Added ListArray to return an indexed array of results of the
+	  List command.  Indexes are the server's message numbers,
+	  beginning at 1.  Additional info supplied by the server
+	  beyond message size may be lost.  The RFC discourages
+	  servers from sending this info.
+	+ yet another EOF fix (this one for Head(msgnum,linecount))
+	  where the read would end prematurely if the message had a
+	  line with a period at the beginning of a line (would return
+	  less than the number of lines requested).
 
 2.4  1999/11/20
 	+ fixed problem created by previous fix.  Lines that had only

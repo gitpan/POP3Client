@@ -1,8 +1,8 @@
 #******************************************************************************
-# $Id: POP3Client.pm,v 2.4 1999/11/20 20:51:28 sdowd Exp $
+# $Id: POP3Client.pm,v 2.5 1999/12/19 18:35:07 sdowd Exp $
 #
 # Description:  POP3Client module - acts as interface to POP3 server
-# Author:       Sean Dowd <dowd@home.com> or <sdowd@arcmail.com>
+# Author:       Sean Dowd <pop3client@dowds.net>
 #
 # Copyright (c) 1999  Sean Dowd.  All rights reserved.
 # This module is free software; you can redistribute it and/or modify
@@ -29,8 +29,8 @@ require Exporter;
 	
 );
 
-my $ID =q( $Id: POP3Client.pm,v 2.4 1999/11/20 20:51:28 sdowd Exp $ );
-$VERSION = substr q$Revision: 2.4 $, 10;
+my $ID =q( $Id: POP3Client.pm,v 2.5 1999/12/19 18:35:07 sdowd Exp $ );
+$VERSION = substr q$Revision: 2.5 $, 10;
 
 
 # Preloaded methods go here.
@@ -424,15 +424,12 @@ sub Head
   $line =~ /^\+OK/ or $me->Message("Bad return from TOP: $line") and return;
   $line =~ /^\+OK (\d+) / and my $buflen = $1;
   
-  do {
+  while (1) {
     $line = $me->_sockread();
-    #    $line =~ /^\s*$|^\.\s*$/ or $header .= $line;
-    $line =~ /^\.\s*$/ or do {
-      # convert any '..' at the start of a line to '.'
-      $line =~ s/^\.\././;
-      $header .= $line;
-    };
-  } until $line =~ /^\.\s*$/;
+    last if $line =~ /^\.\s*$/;
+    $line =~ s/^\.\././;
+    $header .= $line;
+  }
   
   return wantarray ? split(/\r?\n/, $header) : $header;
 } # end Head
@@ -544,6 +541,40 @@ sub List {
     $ret .= $line;
     chomp $line;
     push(@retarray, $line);
+  }
+  if ($ret) {
+    return wantarray ? @retarray : $ret;
+  }
+}
+
+#******************************************************************************
+#* issue the LIST command, but return results in an indexed array.
+#******************************************************************************
+sub ListArray {
+  my $me = shift;
+  my $num = shift || '';
+  my $CMD = shift || 'LIST';
+  $CMD=~ tr/a-z/A-Z/;
+  
+  my $s = $me->Socket();
+  $me->Alive() or return;
+  
+  my @retarray = ();
+  my $ret = '';
+  
+  $me->_sockprint( "$CMD $num", $me->EOL );
+  my $line = $me->_sockread();
+  $line =~ /^\+OK/ or $me->Message("$line") and return;
+  if ($num) {
+    $line =~ s/^\+OK\s*//;
+    return $line;
+  }
+  while( defined( $line = $me->_sockread() ) ) {
+    $line =~ /^\.\s*$/ and last;
+    $ret .= $line;
+    chomp $line;
+    my ($num, $uidl) = split ' ', $line;
+    $retarray[$num] = $uidl;
   }
   if ($ret) {
     return wantarray ? @retarray : $ret;
@@ -885,9 +916,19 @@ mailbox.
 
 Return a list of sizes of each message.
 
+=item I<ListArray>
+
+Return a list of sizes of each message.  This returns an indexed
+array, with each message number as an index (starting from 1) and the
+value as the next entry on the line.  Beware that some servers send
+additional info for each message for the list command.  That info may
+be lost.
+
 =item I<Uidl>( [MESSAGE_NUMBER] )
 
-Return the unique ID for the given message (or all of them).
+Return the unique ID for the given message (or all of them).  Returns
+an indexed array with an entry for each valid message number.
+Indexing begins at 1 to coincide with the server's indexing.
 
 =item I<Last>
 
@@ -921,7 +962,7 @@ Set/Return the current port number.
 
 =head1 AUTHOR
 
-Sean Dowd <dowd@home.com>
+Sean Dowd <pop3client@dowds.net>
 
 =head1 CREDITS
 
