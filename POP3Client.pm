@@ -1,5 +1,5 @@
 #******************************************************************************
-# $Id: POP3Client.pm,v 2.0 1999/04/29 14:48:00 sdowd Exp $
+# $Id: POP3Client.pm,v 2.1 1999/08/19 19:16:37 sdowd Exp $
 #
 # Description:  POP3Client module - acts as interface to POP3 server
 # Author:       Sean Dowd <dowd@home.com> or <sdowd@arcmail.com>
@@ -28,8 +28,8 @@ require Exporter;
 	
 );
 
-my $ID =q( $Id: POP3Client.pm,v 2.0 1999/04/29 14:48:00 sdowd Exp $ );
-$VERSION = substr q$Revision: 2.0 $, 10;
+my $ID =q( $Id: POP3Client.pm,v 2.1 1999/08/19 19:16:37 sdowd Exp $ );
+$VERSION = substr q$Revision: 2.1 $, 10;
 
 
 # Preloaded methods go here.
@@ -59,7 +59,7 @@ sub new
 	      MESG => 'OK',
 	      BANNER => '',
 	      MESG_ID => '',
-	      AUTH_MODE => "PASS",
+	      AUTH_MODE => 'APOP',
 	      EOL => "\015\012",
 	      TIMEOUT => 60,
 	     };
@@ -281,9 +281,8 @@ sub Close
   my $me = shift;
   if ($me->Alive()) {
     my $s = $me->Socket();
-    print $s "QUIT", $me->EOL;
+    $me->_sockprint( "QUIT", $me->EOL );
     close( $me->Socket() ) or $me->Message("close failed: $!") and return 0;
-#     shutdown($me->{SOCKET}, 2) or $me->Message("shutdown failed: $!") and return 0;
     $me->State('DEAD');
   }
   1;
@@ -322,10 +321,10 @@ sub Connect
 	and
 	  return 0;
   $me->{SOCKET} = $s;
+
+  $s->autoflush( 1 );
   
-  select((select($s) , $| = 1)[0]);  # autoflush
-  
-  defined(my $msg = <$s>) or $me->Message("Could not read") and return 0;
+  defined(my $msg = $me->_sockread()) or $me->Message("Could not read") and return 0;
   chomp $msg;
   $me->{BANNER}= $msg;
   $me->{MESG_ID}= $1 if ($msg =~ /(<[\w\d\-\.]+\@[\w\d\-\.]+>)/);
@@ -361,8 +360,8 @@ sub Login_APOP
   my $s = $me->Socket();
   my $hash= MD5->hexhash ($me->{MESG_ID} . $me->Pass);
   
-  print $s "APOP " , $me->User , ' ', $hash, $me->EOL;
-  my $line = <$s>;
+  $me->_sockprint( "APOP " , $me->User , ' ', $hash, $me->EOL );
+  my $line = $me->_sockread();
   chomp $line;
   $me->Message($line);
   $line =~ /^\+OK/ or $me->Message("APOP failed: $line") and $me->State('AUTHORIZATION')
@@ -380,15 +379,15 @@ sub Login_Pass
 {
   my $me = shift;
   my $s = $me->Socket();
-  print $s "USER " , $me->User() , $me->EOL;
-  my $line = <$s>;
+  $me->_sockprint( "USER " , $me->User() , $me->EOL );
+  my $line = $me->_sockread();
   chomp $line;
   $me->Message($line);
   $line =~ /^\+/ or $me->Message("USER failed: $line") and $me->State('AUTHORIZATION')
     and return 0;
   
-  print $s "PASS " , $me->Pass() , $me->EOL;
-  $line = <$s>;
+  $me->_sockprint( "PASS " , $me->Pass() , $me->EOL );
+  $line = $me->_sockread();
   chomp $line;
   $me->Message($line);
   $line =~ /^\+OK/ or $me->Message("PASS failed: $line") and $me->State('AUTHORIZATION')
@@ -416,21 +415,19 @@ sub Head
   my $header = '';
   my $s = $me->Socket();
   
-  $me->Debug() and carp "POP3: TOP $num $lines\n";
-  print $s "TOP $num $lines", $me->EOL;
-  my $line = <$s>;
-  $me->Debug() and carp "POP3: $line";
+  $me->_sockprint( "TOP $num $lines", $me->EOL );
+  my $line = $me->_sockread();
   chomp $line;
-  $line =~ /^\+OK/ or $me->Message("Bad return from TOP: $line") and return '';
+  $line =~ /^\+OK/ or $me->Message("Bad return from TOP: $line") and return;
   $line =~ /^\+OK (\d+) / and my $buflen = $1;
   
   do {
-    $line = <$s>;
-#    $line =~ /^\s*$|^\.\s*$/ or $header .= $line;
+    $line = $me->_sockread();
+    #    $line =~ /^\s*$|^\.\s*$/ or $header .= $line;
     $line =~ /^\.\s*$/ or $header .= $line;
   } until $line =~ /^\.\s*$/;
   
-	return wantarray ? split(/\r?\n/, $header) : $header;
+  return wantarray ? split(/\r?\n/, $header) : $header;
 } # end Head
 
 
@@ -444,16 +441,14 @@ sub HeadAndBody
   my $mandb = '';
   my $s = $me->Socket();
   
-  $me->Debug() and carp "POP3: RETR $num\n";
-  print $s "RETR $num", $me->EOL;
-  my $line = <$s>;
-  $me->Debug() and carp "POP3: $line";
+  $me->_sockprint( "RETR $num", $me->EOL );
+  my $line = $me->_sockread();
   chomp $line;
-  $line =~ /^\+OK/ or $me->Message("Bad return from RETR: $line") and return '';
+  $line =~ /^\+OK/ or $me->Message("Bad return from RETR: $line") and return;
   $line =~ /^\+OK (\d+) / and my $buflen = $1;
   
   do {
-    $line = <$s>;
+    $line = $me->_sockread();
     $line =~ /^\.\s*$/ or $mandb .= $line;
   } until $line =~ /^\.\s*$/;
   
@@ -472,21 +467,19 @@ sub Body
   my $body = '';
   my $s = $me->Socket();
   
-  $me->Debug() and carp "POP3: RETR $num\n";
-  print $s "RETR $num", $me->EOL;
-  my $line = <$s>;
-  $me->Debug() and carp "POP3: $line";
+  $me->_sockprint( "RETR $num", $me->EOL );
+  my $line = $me->_sockread();
   chomp $line;
-  $line =~ /^\+OK/ or $me->Message("Bad return from RETR: $line") and return '';
+  $line =~ /^\+OK/ or $me->Message("Bad return from RETR: $line") and return;
   $line =~ /^\+OK (\d+) / and my $buflen = $1;
   
   # skip the header
   do {
-    $line = <$s>;
+    $line = $me->_sockread();
   } until $line =~ /^\s*$/;
   
   do {
-    $line = <$s>;
+    $line = $me->_sockread();
     $line =~ /^\.\s*$/ or $body .= $line;
   } until $line =~ /^\.\s*$/;
   
@@ -502,9 +495,8 @@ sub POPStat {
   my $me = shift;
   my $s = $me->Socket();
   
-  $me->Debug() and carp "POP3: POPStat";
-  print $s "STAT", $me->EOL;
-  my $line = <$s>;
+  $me->_sockprint( "STAT", $me->EOL );
+  my $line = $me->_sockread();
   $line =~ /^\+OK/ or $me->Message("STAT failed: $line") and return -1;
   $line =~ /^\+OK (\d+) (\d+)/ and $me->Count($1), $me->Size($2);
   
@@ -527,15 +519,14 @@ sub List {
   my @retarray = ();
   my $ret = '';
   
-  $me->Debug() and carp "POP3: $CMD $num";
-  print $s "$CMD $num", $me->EOL;
-  my $line = <$s>;
+  $me->_sockprint( "$CMD $num", $me->EOL );
+  my $line = $me->_sockread();
   $line =~ /^\+OK/ or $me->Message("$line") and return;
   if ($num) {
     $line =~ s/^\+OK\s*//;
     return $line;
   }
-  while( defined( $line = <$s> ) ) {
+  while( defined( $line = $me->_sockread() ) ) {
     $line =~ /^\.\s*$/ and last;
     $ret .= $line;
     chomp $line;
@@ -556,18 +547,17 @@ sub Retrieve {
 
 
 #******************************************************************************
-#* implement the LAST command - see the rfc (1081)
+#* implement the LAST command - see the rfc (1081) OBSOLETED by RFC
 #******************************************************************************
 sub Last {
   my $me = shift;
   
   my $s = $me->Socket();
   
-  $me->Debug() and carp "POP3: LAST (obsolete)";
-  print $s "LAST", $me->EOL;
-  my $line = <$s>;
+  $me->_sockprint( "LAST", $me->EOL );
+  my $line = $me->_sockread();
   
-  $line =~ /\+OK (\d+)\s*$/ and return $1;
+  $line =~ /\+OK (\d+)\D*$/ and return $1;
 }
 
 
@@ -578,9 +568,8 @@ sub Reset {
   my $me = shift;
   
   my $s = $me->Socket();
-  $me->Debug() and carp "POP3: RSET";
-  print $s "RSET", $me->EOL;
-  my $line = <$s>;
+  $me->_sockprint( "RSET", $me->EOL );
+  my $line = $me->_sockread();
   $line =~ /\+OK .*$/ and return 1;
   return 0;
 }
@@ -594,9 +583,8 @@ sub Delete {
   my $num = shift || return;
   
   my $s = $me->Socket();
-  $me->Debug() and carp "POP3: DELE $num";
-  print $s "DELE $num",  $me->EOL;
-  my $line = <$s>;
+  $me->_sockprint( "DELE $num",  $me->EOL );
+  my $line = $me->_sockread();
   $me->Message($line);
   $line =~ /^\+OK / && return 1;
   return 0;
@@ -616,15 +604,14 @@ sub Uidl {
   my @retarray = ();
   my $ret = '';
   
-  $me->Debug() and carp "POP3: UIDL $num";
-  print $s "UIDL $num", $me->EOL;
-  my $line = <$s>;
+  $me->_sockprint( "UIDL $num", $me->EOL );
+  my $line = $me->_sockread();
   $line =~ /^\+OK/ or $me->Message($line) and return;
   if ($num) {
     $line =~ s/^\+OK\s*//;
     return $line;
   }
-  while( defined( $line = <$s> ) ) {
+  while( defined( $line = $me->_sockread() ) ) {
     $line =~ /^\.\s*$/ and last;
     $ret .= $line;
     chomp $line;
@@ -634,6 +621,28 @@ sub Uidl {
   if ($ret) {
     return wantarray ? @retarray : $ret;
   }
+}
+
+
+
+#*****************************************************************************
+#* funnel all read/write through here to allow easier debugging
+#* (mitra@earth.path.net)
+#*****************************************************************************
+sub _sockprint
+{
+  my $me = shift;
+  my $s = $me->Socket();
+  $me->Debug and carp "POP3 -> ", @_;
+  print $s @_;
+}
+
+sub _sockread
+{
+  my $me = shift;
+  my $line = $me->Socket()->getline();
+  $me->Debug and carp "POP3 <- ", $line;
+  return $line;
 }
 
 
@@ -661,7 +670,7 @@ Mail::POP3Client - Perl 5 module to talk to a POP3 (RFC1939) server
 			       PASSWORD => "mypassword",
 			       HOST     => "pop3.do.main" );
   for( $i = 1; $i <= $pop->Count(); $i++ ) {
-    foreach( $pop->Head() ) {
+    foreach( $pop->Head( $i ) ) {
       /^(From|Subject):\s+/i && print $_, "\n";
     }
   }
@@ -857,6 +866,10 @@ mailbox.
 =item I<List>
 
 Return a list of sizes of each message.
+
+=item I<Uidl>( [MESSAGE_NUMBER] )
+
+Return the unique ID for the given message (or all of them).
 
 =item I<Last>
 

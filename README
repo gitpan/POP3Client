@@ -23,6 +23,23 @@ user:password:host.
 % make test
 
 
+HOW DO I USE THIS WHEN MY ISP WON'T INSTALL IT FOR ME?
+
+You have 2 choices.  You can go through the installation process using
+a prefix option to the make command like this:
+
+	% perl Makefile.PL prefix=/some/other/directory
+
+then just make; make install as above.
+
+Or you can create a directory called Mail somewhere and just
+put POP3Client.pm in there.
+
+Choice 1 is better because you can track what modules you have
+installed but if you don't have command line access you'll have to go
+with choice 2.
+
+
 WHERE IS THE DOCUMENTATION?
 
 The documentation is in the code in POD format.  To read it, use

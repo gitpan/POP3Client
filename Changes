@@ -1,6 +1,21 @@
 Revision history for Perl extension Mail::POP3Client.
 
-This is version 2.00 of Mail::POP3Client.  
+This is version 2.1 of Mail::POP3Client.  
+
+2.1  1999/08/19
+	+ moved all socket IO to 2 methods to allow debug to print all
+	  socket IO. (mitra@earth.path.net)
+	+ fixed some places where you could get an empty string
+	  returned as an error when calling from an array context.
+	  Now returns nothing (false for both array and scalar
+	  context).
+	+ defaults to APOP (digest) as authentication mode.  Will
+	  switch to PASS (cleartext) if server does not claim to
+	  support APOP.  This will mean less passwords sent in
+	  cleartext.
+	+ fixed example in the Synopsis section (missing argument to
+	  Head).
+	+ added a simple documentation line for Uidl
 
 2.00 1999/04/29 - major rebuild, including:
 	+ changed to hash-style constructor.  See the inline doco.
