@@ -1,6 +1,13 @@
 Revision history for Perl extension Mail::POP3Client.
 
-This is version 2.2 of Mail::POP3Client.  
+This is version 2.3 of Mail::POP3Client.  
+
+2.3  1999/10/11
+	+ fixed problem where lines beginning with '.' in a mail
+          message were not having the extra '.' removed.  The POP3
+          server adds this '.' to escape the original '.' so that it
+          is not interpreted as the end of message marker.  Pointed
+          out by Jim Osborne @ Wingra.com.
 
 2.2  1999/10/10
 	+ fixed problem with MacPerl and lingering CR/LF chars on the

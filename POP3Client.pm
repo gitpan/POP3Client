@@ -1,5 +1,5 @@
 #******************************************************************************
-# $Id: POP3Client.pm,v 2.2 1999/10/10 17:34:43 sdowd Exp $
+# $Id: POP3Client.pm,v 2.3 1999/10/11 15:38:36 sdowd Exp $
 #
 # Description:  POP3Client module - acts as interface to POP3 server
 # Author:       Sean Dowd <dowd@home.com> or <sdowd@arcmail.com>
@@ -29,8 +29,8 @@ require Exporter;
 	
 );
 
-my $ID =q( $Id: POP3Client.pm,v 2.2 1999/10/10 17:34:43 sdowd Exp $ );
-$VERSION = substr q$Revision: 2.2 $, 10;
+my $ID =q( $Id: POP3Client.pm,v 2.3 1999/10/11 15:38:36 sdowd Exp $ );
+$VERSION = substr q$Revision: 2.3 $, 10;
 
 
 # Preloaded methods go here.
@@ -427,7 +427,11 @@ sub Head
   do {
     $line = $me->_sockread();
     #    $line =~ /^\s*$|^\.\s*$/ or $header .= $line;
-    $line =~ /^\.\s*$/ or $header .= $line;
+    $line =~ /^\.\s*$/ or do {
+      # convert any '..' at the start of a line to '.'
+      $line =~ s/^\.\././;
+      $header .= $line;
+    };
   } until $line =~ /^\.\s*$/;
   
   return wantarray ? split(/\r?\n/, $header) : $header;
@@ -452,7 +456,11 @@ sub HeadAndBody
   
   do {
     $line = $me->_sockread();
-    $line =~ /^\.\s*$/ or $mandb .= $line;
+    $line =~ /^\.\s*$/ or do {
+      # convert any '..' at the start of a line to '.'
+      $line =~ s/^\.\././;
+      $mandb .= $line;
+    };
   } until $line =~ /^\.\s*$/;
   
   return wantarray ? split(/\r?\n/, $mandb) : $mandb;
@@ -483,7 +491,11 @@ sub Body
   
   do {
     $line = $me->_sockread();
-    $line =~ /^\.\s*$/ or $body .= $line;
+    $line =~ /^\.\s*$/ or do {
+      # convert any '..' at the start of a line to '.'
+      $line =~ s/^\.\././;
+      $body .= $line;
+    };
   } until $line =~ /^\.\s*$/;
   
   return wantarray ? split(/\r?\n/, $body) : $body;
