@@ -32,8 +32,11 @@ a prefix option to the make command like this:
 
 then just make; make install as above.
 
-Or you can create a directory called Mail somewhere and just
-put POP3Client.pm in there.
+Or you can create a directory called Mail somewhere and just put
+POP3Client.pm in there.  You will then have to put this directory into
+your include path (@INC) either on the command line or in you code
+(i.e. push(@INC,"/path/to/directory"); ).  You need to include the
+directory above Mail.
 
 Choice 1 is better because you can track what modules you have
 installed but if you don't have command line access you'll have to go
@@ -47,6 +50,6 @@ The documentation is in the code in POD format.  To read it, use
 pod2html.
 
 
-Written by Sean Dowd <dowd@home.com> or <sdowd@arcmail.com>.
+Written by Sean Dowd <ssd@dowds.net> or <sdowd@arcmail.com>.
 
 

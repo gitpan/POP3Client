@@ -1,6 +1,10 @@
 Revision history for Perl extension Mail::POP3Client.
 
-This is version 2.1 of Mail::POP3Client.  
+This is version 2.2 of Mail::POP3Client.  
+
+2.2  1999/10/10
+	+ fixed problem with MacPerl and lingering CR/LF chars on the
+          socket.
 
 2.1  1999/08/19
 	+ moved all socket IO to 2 methods to allow debug to print all

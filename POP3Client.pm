@@ -1,5 +1,5 @@
 #******************************************************************************
-# $Id: POP3Client.pm,v 2.1 1999/08/19 19:16:37 sdowd Exp $
+# $Id: POP3Client.pm,v 2.2 1999/10/10 17:34:43 sdowd Exp $
 #
 # Description:  POP3Client module - acts as interface to POP3 server
 # Author:       Sean Dowd <dowd@home.com> or <sdowd@arcmail.com>
@@ -15,6 +15,7 @@ package Mail::POP3Client;
 use strict;
 use Carp;
 use IO::Socket;
+use Config;
 
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK);
 
@@ -28,8 +29,8 @@ require Exporter;
 	
 );
 
-my $ID =q( $Id: POP3Client.pm,v 2.1 1999/08/19 19:16:37 sdowd Exp $ );
-$VERSION = substr q$Revision: 2.1 $, 10;
+my $ID =q( $Id: POP3Client.pm,v 2.2 1999/10/10 17:34:43 sdowd Exp $ );
+$VERSION = substr q$Revision: 2.2 $, 10;
 
 
 # Preloaded methods go here.
@@ -62,7 +63,9 @@ sub new
 	      AUTH_MODE => 'APOP',
 	      EOL => "\015\012",
 	      TIMEOUT => 60,
+	      STRIPCR => 0,
 	     };
+  $Config{osname} =~ /MacOS/i && ($self->{STRIPCR} = 1);
   bless( $self, $classname );
   $self->_init( @_ );
 
@@ -641,6 +644,11 @@ sub _sockread
 {
   my $me = shift;
   my $line = $me->Socket()->getline();
+
+  # Macs seem to leave CR's or LF's sitting on the socket.  This
+  # removes them.
+  $me->{STRIPCR} && ($line =~ s/^[\r]+//);
+  
   $me->Debug and carp "POP3 <- ", $line;
   return $line;
 }
