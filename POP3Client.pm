@@ -1,5 +1,5 @@
 #******************************************************************************
-# $Id: POP3Client.pm,v 2.5 1999/12/19 18:35:07 sdowd Exp $
+# $Id: POP3Client.pm,v 2.6 2000/02/17 13:47:35 ssd Exp $
 #
 # Description:  POP3Client module - acts as interface to POP3 server
 # Author:       Sean Dowd <pop3client@dowds.net>
@@ -29,8 +29,8 @@ require Exporter;
 	
 );
 
-my $ID =q( $Id: POP3Client.pm,v 2.5 1999/12/19 18:35:07 sdowd Exp $ );
-$VERSION = substr q$Revision: 2.5 $, 10;
+my $ID =q( $Id: POP3Client.pm,v 2.6 2000/02/17 13:47:35 ssd Exp $ );
+$VERSION = substr q$Revision: 2.6 $, 10;
 
 
 # Preloaded methods go here.
@@ -614,7 +614,7 @@ sub Reset {
   my $s = $me->Socket();
   $me->_sockprint( "RSET", $me->EOL );
   my $line = $me->_sockread();
-  $line =~ /\+OK .*$/ and return 1;
+  $line =~ /^\+OK/ and return 1;
   return 0;
 }
 
@@ -630,7 +630,7 @@ sub Delete {
   $me->_sockprint( "DELE $num",  $me->EOL );
   my $line = $me->_sockread();
   $me->Message($line);
-  $line =~ /^\+OK / && return 1;
+  $line =~ /^\+OK/ && return 1;
   return 0;
 }
 
