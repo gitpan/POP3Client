@@ -1,5 +1,5 @@
 #******************************************************************************
-# $Id: POP3Client.pm,v 2.7 2000/09/25 00:29:03 ssd Exp $
+# $Id: POP3Client.pm,v 2.8 2001/08/16 02:10:25 ssd Exp $
 #
 # Description:  POP3Client module - acts as interface to POP3 server
 # Author:       Sean Dowd <pop3client@dowds.net>
@@ -21,7 +21,7 @@ use vars qw($VERSION @ISA @EXPORT @EXPORT_OK);
 
 require Exporter;
 
-@ISA = qw(Exporter AutoLoader);
+@ISA = qw(Exporter);
 # Items to export into callers namespace by default. Note: do not export
 # names by default without a very good reason. Use EXPORT_OK instead.
 # Do not simply export all your public functions/methods/constants.
@@ -29,8 +29,9 @@ require Exporter;
 	
 );
 
-my $ID =q( $Id: POP3Client.pm,v 2.7 2000/09/25 00:29:03 ssd Exp $ );
-$VERSION = substr q$Revision: 2.7 $, 10;
+my $ID =q( $Id: POP3Client.pm,v 2.8 2001/08/16 02:10:25 ssd Exp $ );
+$VERSION = substr q$Revision: 2.8 $, 10;
+$VERSION = "BOGUS!!!!";
 
 
 # Preloaded methods go here.
@@ -42,9 +43,10 @@ $VERSION = substr q$Revision: 2.7 $, 10;
 #*                       HOST => host,
 #*                       AUTH_MODE => [BEST|APOP|PASS],
 #*                       TIMEOUT => 30,
+#*                       LOCALADDR => 'xxx.xxx.xxx.xxx[:xx]',
 #*                       DEBUG => 1 );
 #* OR (deprecated)
-#* new Mail::POP3Client( user, pass, host [, port, debug, auth_mode])
+#* new Mail::POP3Client( user, pass, host [, port, debug, auth_mode, local_addr])
 #******************************************************************************
 sub new
 {
@@ -64,7 +66,9 @@ sub new
 	      EOL => "\015\012",
 	      TIMEOUT => 60,
 	      STRIPCR => 0,
+	      LOCALADDR => undef,
 	     };
+  $self->{tranlog} = ();
   $Config{osname} =~ /MacOS/i && ($self->{STRIPCR} = 1);
   bless( $self, $classname );
   $self->_init( @_ );
@@ -121,10 +125,12 @@ sub _initOldStyle {
   $debug && $self->Debug( $debug );
   my $auth_mode = shift;
   $auth_mode && ($self->{AUTH_MODE} = $auth_mode);
+  my $localaddr = shift;
+  $localaddr && ($self->{LOCALADDR} = $localaddr);
 }
 
 #******************************************************************************
-#* Is the socket alive?
+#* What version are we?
 #******************************************************************************
 sub Version {
   return $VERSION;
@@ -200,6 +206,17 @@ sub Host
     $me->Message( "Could not inet_aton: $host, $!") and return;
   $me->{HOST} = $host;
 } # end host
+
+#******************************************************************************
+#* set the local address
+#******************************************************************************
+sub LocalAddr
+{
+  my $me = shift;
+  my $addr = shift or return $me->{LOCALADDR};
+
+  $me->{LOCALADDR} = $addr;
+} 
 
 
 #******************************************************************************
@@ -285,8 +302,16 @@ sub Close
   if ($me->Alive()) {
     my $s = $me->Socket();
     $me->_sockprint( "QUIT", $me->EOL );
+
+    # from Patrick Bourdon - need this because some servers do not
+    # delete in all cases.  RFC says server can respond (in UPDATE
+    # state only, otherwise always OK).
+    my $line = $me->_sockread();
+    
+    $me->Message( $line );
     close( $me->Socket() ) or $me->Message("close failed: $!") and return 0;
     $me->State('DEAD');
+    $line =~ /^\+OK/i || return 0;
   }
   1;
 } # end Close
@@ -318,6 +343,7 @@ sub Connect
 				 PeerPort  => $me->Port(),
 				 Proto     => "tcp",
 				 Type      => SOCK_STREAM,
+				 LocalAddr => $me->LocalAddr(),
 				 Timeout   => $me->{TIMEOUT} )
     or 
       $me->Message( "could not connect socket [$me->{HOST}, $me->{PORT}]: $!" )
@@ -330,10 +356,15 @@ sub Connect
   defined(my $msg = $me->_sockread()) or $me->Message("Could not read") and return 0;
   chomp $msg;
   $me->{BANNER}= $msg;
+
+  # add check for servers that return -ERR on connect (not in RFC1939)
+  $me->Message($msg);
+  $msg =~ /^\+OK/i || return 0;
+  
   $me->{MESG_ID}= $1 if ($msg =~ /(<[\w\d\-\.]+\@[\w\d\-\.]+>)/);
   $me->Message($msg);
-  $me->State('AUTHORIZATION');
   
+  $me->State('AUTHORIZATION');
   $me->User() and $me->Pass() and $me->Login();
   
 } # end Connect
@@ -499,7 +530,7 @@ sub HeadAndBodyToFile
   $me->_sockprint( "RETR $num", $me->EOL );
   my $line = $me->_sockread();
   chomp $line;
-  $line =~ /^\+OK/ or $me->Message("Bad return from RETR: $line") and return;
+  $line =~ /^\+OK/ or $me->Message("Bad return from RETR: $line") and return 0;
   $line =~ /^\+OK (\d+) / and my $buflen = $1;
   
   while (1) {
@@ -508,7 +539,8 @@ sub HeadAndBodyToFile
     # convert any '..' at the start of a line to '.'  
     $line =~ s/^\.\././;
     print $fh $line;
-  } 
+  }
+  return 1;
 } # end BodyToFile
 
 
@@ -778,6 +810,9 @@ sub _sockprint
   my $me = shift;
   my $s = $me->Socket();
   $me->Debug and carp "POP3 -> ", @_;
+  my $outline = "@_";
+  chomp $outline;
+  push(@{$me->{tranlog}}, $outline);
   print $s @_;
 }
 
@@ -791,6 +826,11 @@ sub _sockread
   $me->{STRIPCR} && ($line =~ s/^[\r]+//);
   
   $me->Debug and carp "POP3 <- ", $line;
+  $line =~ /^[\\+\\-](OK|ERR)/i && do {
+    my $l = $line;
+    chomp $l;
+    push(@{$me->{tranlog}}, $l);
+  };
   return $line;
 }
 
@@ -868,6 +908,7 @@ New style (shown with defaults):
                          AUTH_MODE => 'BEST',
                          DEBUG     => 0,
                          TIMEOUT   => 60,
+                         LOCALADDR => 'xxx.xxx.xxx.xxx[:xx]',
                        );
 
 =over 4
@@ -892,6 +933,9 @@ AUTH_MODE - pass 'APOP' to force APOP (MD5) authorization. (default is 'BEST')
 
 =item *
 TIMEOUT - set a timeout value for socket operations (default = 60)
+
+=item *
+LOCALADDR - allow selecting a local inet address to use
 
 =back
 
@@ -939,7 +983,7 @@ Another warning, it's impossible to differentiate between a timeout
 and a failure.
 
 
-=item I<Head>( MESSAGE_NUMBER )
+=item I<Head>( MESSAGE_NUMBER [, PREVIEW_LINES ] )
 
 Get the headers of the specified message, either as an array or as a
 string, depending on context.
@@ -964,7 +1008,7 @@ $pop->BodyToFile( $fh, 1 );
 Does no stripping of NL or CR.
 
 
-=item I<HeadAndBody>( MESSAGE_NUMBER [, PREVIEW_LINES ] )
+=item I<HeadAndBody>( MESSAGE_NUMBER )
 
 Get the head and body of the specified message, either as an array of
 lines or as a string, depending on context.
@@ -973,11 +1017,10 @@ lines or as a string, depending on context.
 
 =item Example
 
-foreach ( $pop->HeadAndBody( 1, 10 ) )
+foreach ( $pop->HeadAndBody( 1 ) )
    print $_, "\n";
 
-prints out a preview of each message, with the full header and the
-first 10 lines of the message (if supported by the POP3 server).
+prints out the complete text of message 1.
 
 =back
 
@@ -988,8 +1031,7 @@ my $fh = new IO::Handle();
 $fh->fdopen( fileno( STDOUT ), "w" );
 $pop->HeadAndBodyToFile( $fh, 1 );
 
-Does no stripping of NL or CR.  Since you have to create the file
-handle yourself, there is no HeadAndBodyToFile or HeadToFile.
+Does no stripping of NL or CR.
 
 
 =item I<Retrieve>( MESSAGE_NUMBER )
@@ -1033,7 +1075,8 @@ Set/Return the number of remote messages.  Set during Login.
 
 =item I<Message>
 
-The last status message received from the server.
+The last status message received from the server or a message
+describing any problem encountered.
 
 =item I<State>
 

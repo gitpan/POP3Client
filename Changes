@@ -1,8 +1,22 @@
 Revision history for Perl extension Mail::POP3Client.
 
-This is version 2.7 of Mail::POP3Client.
+This is version 2.8 of Mail::POP3Client.
 
-2.7  2000/0
+2.8  2001/08/15
+	+ add patch for setting LOCALADDR for multi-address machines.
+        + add transaction log (reference request/response chain array
+          as @{$pop->{tranlog}})
+        + remove AutoLoader from @ISA
+        + changed HeadAndBodyToFile to return 1 on success and 0 on
+          failure
+        + patch to handle servers that do not return +OK as banner (RFC
+          1939 does not appear to allow this)
+        + patch to fix problem of response on QUIT command (in Close)
+          being ignored.
+        + Fixed documentation on Head and HeadAndBody.  Preview lines
+          argument was in the wrong one.
+
+2.7  2000/03/25
 	+ clarify documentation regarding APOP.
 	+ Add support for BEST mode when authenticating.  BEST will
      	  attempt APOP and drop back to PASS on failure.  This is the

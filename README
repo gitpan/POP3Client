@@ -22,6 +22,9 @@ user:password:host.
 % export POPTESTACCOUNT=jsmith:secret:pop3.my.do.main
 % make test
 
+On Win32 ActiveState perl, you can install it using the Perl Package
+Manager (ppm).
+
 
 HOW DO I USE THIS WHEN MY ISP WON'T INSTALL IT FOR ME?
 
@@ -34,9 +37,9 @@ then just make; make install as above.
 
 Or you can create a directory called Mail somewhere and just put
 POP3Client.pm in there.  You will then have to put this directory into
-your include path (@INC) either on the command line or in you code
-(i.e. push(@INC,"/path/to/directory"); ).  You need to include the
-directory above Mail.
+your include path (@INC) either on the command line or in your code
+(i.e. use lib '/path/to/directory'; ).  You need to include the
+directory above Mail and case does matter.
 
 Choice 1 is better because you can track what modules you have
 installed but if you don't have command line access you'll have to go
