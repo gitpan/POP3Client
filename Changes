@@ -1,8 +1,15 @@
 Revision history for Perl extension Mail::POP3Client.
 
-This is version 2.12 of Mail::POP3Client.
+This is version 2.14 of Mail::POP3Client.
 
-2.13 2002/12/??
+2.14 2003/03/22
+	+ Fixed problem when using SSL connection with SSL socket
+	  passed in via Socket();
+	+ Added Mail::IMAPClient compatibility calls
+	+ Fixed issue with ListArray when POP3 server uses a tab as
+	  separator
+
+2.13 2003/01/09
 	+ Added XTND command - submitted by Chris Moates <six at mox dot net>
 	+ Added documentation to POD regarding return value of new.
 	+ Allow Socket to set the socket (for use with SSL) -submitted by

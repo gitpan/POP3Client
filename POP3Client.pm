@@ -1,10 +1,10 @@
 #******************************************************************************
-# $Id: POP3Client.pm,v 2.13 2003/01/10 00:25:01 ssd Exp $
+# $Id: POP3Client.pm,v 2.14 2003/03/22 19:58:47 ssd Exp $
 #
 # Description:  POP3Client module - acts as interface to POP3 server
 # Author:       Sean Dowd <pop3client@dowds.net>
 #
-# Copyright (c) 1999,2000,2001  Sean Dowd.  All rights reserved.
+# Copyright (c) 1999-2003  Sean Dowd.  All rights reserved.
 # This module is free software; you can redistribute it and/or modify
 # it under the same terms as Perl itself.
 #
@@ -28,8 +28,8 @@ require Exporter;
 
 );
 
-my $ID =q( $Id: POP3Client.pm,v 2.13 2003/01/10 00:25:01 ssd Exp $ );
-$VERSION = substr q$Revision: 2.13 $, 10;
+my $ID =q( $Id: POP3Client.pm,v 2.14 2003/03/22 19:58:47 ssd Exp $ );
+$VERSION = substr q$Revision: 2.14 $, 10;
 
 
 # Preloaded methods go here.
@@ -65,6 +65,8 @@ sub new
 	      TIMEOUT => 60,
 	      STRIPCR => 0,
 	      LOCALADDR => undef,
+	      SOCKET => undef,
+	      USESSL => 0,
 	     };
   $self->{tranlog} = ();
   $^O =~ /MacOS/i && ($self->{STRIPCR} = 1);
@@ -251,6 +253,7 @@ sub Pass
 
 } # end Pass
 
+sub Password { Pass(@_); }
 
 #******************************************************************************
 #*
@@ -325,6 +328,8 @@ sub Close
   1;
 } # end Close
 
+sub close { Close(@_); }
+sub logout { Close(@_); }
 
 #******************************************************************************
 #*
@@ -348,17 +353,37 @@ sub Connect
 
   $me->Close();
 
-  my $s = IO::Socket::INET->new( PeerAddr  => $me->Host(),
-				 PeerPort  => $me->Port(),
-				 Proto     => "tcp",
+  my $s = $me->{SOCKET};
+  $s || do {
+    if ( $me->{USESSL} ) {
+      if ( $me->Port() == 110 ) { $me->Port( 995 ); }
+        eval {
+	  require IO::Socket::SSL;
+	};
+      $s = IO::Socket::SSL->new( PeerAddr => $me->Host(),
+				 PeerPort => $me->Port(),
+				 Proto    => "tcp",
 				 Type      => SOCK_STREAM,
 				 LocalAddr => $me->LocalAddr(),
 				 Timeout   => $me->{TIMEOUT} )
-    or
-      $me->Message( "could not connect socket [$me->{HOST}, $me->{PORT}]: $!" )
-	and
-	  return 0;
-  $me->{SOCKET} = $s;
+	or $me->Message( "could not connect SSL socket [$me->{HOST}, $me->{PORT}]: $!" )
+	  and return 0;
+      $me->{SOCKET} = $s;
+      
+    } else {
+      $s = IO::Socket::INET->new( PeerAddr  => $me->Host(),
+				  PeerPort  => $me->Port(),
+				  Proto     => "tcp",
+				  Type      => SOCK_STREAM,
+				  LocalAddr => $me->LocalAddr(),
+				  Timeout   => $me->{TIMEOUT} )
+	or
+	  $me->Message( "could not connect socket [$me->{HOST}, $me->{PORT}]: $!" )
+	    and
+	      return 0;
+      $me->{SOCKET} = $s;
+    }
+  };
 
   $s->autoflush( 1 );
 
@@ -378,6 +403,7 @@ sub Connect
 
 } # end Connect
 
+sub connect { Connect(@_); }
 
 #******************************************************************************
 #* login to the POP server. If the AUTH_MODE is set to BEST, and the server
@@ -390,6 +416,7 @@ sub Connect
 sub Login
 {
   my $me= shift;
+  return 1 if $me->State eq 'TRANSACTION';  # Already logged in
 
   if ($me->{AUTH_MODE} eq 'BEST') {
     my $retval;
@@ -420,6 +447,7 @@ sub Login
   return($me->Login_Pass());
 }
 
+sub login { Login(@_); }
 
 #******************************************************************************
 #* login to the POP server using APOP (md5) authentication.
@@ -527,7 +555,7 @@ sub Login_Pass
   
   $me->State('TRANSACTION');
 
-  $me->POPStat() or return 0;
+  ($me->POPStat() >= 0) or return 0;
 
 } # end Login
 
@@ -609,6 +637,7 @@ sub HeadAndBody
 
 } # end HeadAndBody
 
+sub message_string { HeadAndBody(@_); }
 
 #******************************************************************************
 #* get the head and body of a message and write it to a file handle.
@@ -830,7 +859,7 @@ sub ListArray {
     $line =~ /^\.\s*$/ and last;
     $ret .= $line;
     chomp $line;
-    my ($num, $uidl) = split ' ', $line;
+    my ($num, $uidl) = split('\s+', $line);
     $retarray[$num] = $uidl;
   }
   if ($ret) {
@@ -912,6 +941,7 @@ sub Delete {
   return 0;
 }
 
+sub delete_message { Delete(@_); }
 
 #******************************************************************************
 #* UIDL - submitted by Dion Almaer (dion@member.com)
@@ -942,7 +972,7 @@ sub Uidl
     $line =~ /^\.\s*$/ and last;
     $ret .= $line;
     chomp $line;
-    my ($num, $uidl) = split ' ', $line;
+    my ($num, $uidl) = split('\s+', $line);
     $retarray[$num] = $uidl;
   }
   if ($ret) {
@@ -1006,6 +1036,26 @@ sub Xtnd {
 }
 
 
+#******************************************************************************
+#* Mail::IMAPClient compatibility functions (wsnyder@wsnyder.org)
+#******************************************************************************
+
+# Empty stubs
+sub Peek {}
+sub Uid {}
+
+# Pop doesn't have concept of different folders
+sub folders { return ('INBOX'); }
+sub Folder { return ('INBOX'); }
+sub select {}
+
+# Message accessing
+sub unseen {
+    my $me = shift;
+    my $count = $me->Count;
+    return () if !$count;
+    return ( 1..$count);
+}
 
 #*****************************************************************************
 #* Check the state before issuing a command
@@ -1090,19 +1140,28 @@ Mail::POP3Client - Perl 5 module to talk to a POP3 (RFC1939) server
     }
   }
   $pop->Close();
+
+  # OR with SSL
+  $pop = new Mail::POP3Client( USER     => "me",
+			       PASSWORD => "mypassword",
+			       HOST     => "pop3.do.main",
+			       USESSL   => true,
+			     );
+
   # OR
   $pop2 = new Mail::POP3Client( HOST  => "pop3.otherdo.main" );
   $pop2->User( "somebody" );
   $pop2->Pass( "doublesecret" );
   $pop2->Connect() >= 0 || die $pop2->Message();
   $pop2->Close();
-  # OR to use SSL...
-  my $socket = IO::Socket::SSL->new( PeerAddr => 'pop.host.com',
+
+  # OR to use your own SSL socket...
+  my $socket = IO::Socket::SSL->new( PeerAddr => 'pop.securedo.main',
                                      PeerPort => 993,
                                      Proto    => 'tcp') || die "No socket!";
   my $pop = Mail::POP3Client->new();
-  $pop->User('jamie');
-  $pop->Pass('secret');
+  $pop->User('somebody');
+  $pop->Pass('doublesecret');
   $pop->Socket($socket);
   $pop->Connect();
 
@@ -1144,6 +1203,8 @@ New style (shown with defaults):
                          DEBUG     => 0,
                          TIMEOUT   => 60,
                          LOCALADDR => 'xxx.xxx.xxx.xxx[:xx]',
+                         SOCKET => undef,
+                         USESSL => 0,
                        );
 
 =over 4
@@ -1184,7 +1245,9 @@ commands return multiple lines as an array in an array context.
 =over 8
 
 =item I<new>( USER => 'user', PASSWORD => 'password', HOST => 'host',
-              PORT => 110, DEBUG => 0, AUTH_MODE => 'BEST', TIMEOUT => 60 )
+              PORT => 110, DEBUG => 0, AUTH_MODE => 'BEST', TIMEOUT => 60,,
+              LOCALADDR => 'xxx.xxx.xxx.xxx[:xx]', SOCKET => undef, USESSL => 0 )
+)
 
 Construct a new POP3 connection with this.  You should use the
 hash-style constructor.  B<The old positional constructor is
@@ -1218,6 +1281,11 @@ to STDERR.
 
 Another warning, it's impossible to differentiate between a timeout
 and a failure.
+
+If you pas a true value for USESSL, the port will be changed to 995 if
+it is not set or is 110.  Otherwise, it will use your port.  If USESSL
+is true, IO::Socket::SSL will be loaded.  If it is not in your perl,
+the call to connect will fail.
 
 new returns a valid Mail::POP3CLient object in all cases.  To test for
 a connection failure, you will need to check the number of messages:
@@ -1341,7 +1409,7 @@ returning an indexed array of the sizes of each message in the same
 format.
 
 You can parse the size in bytes using split:
- ($msgnum, $size) = split ' ', $pop -> List( n )
+ ($msgnum, $size) = split('\s+', $pop -> List( n ));
 
 
 =item I<ListArray>
@@ -1396,6 +1464,12 @@ Set/Return the current host.
 Set/Return the current port number.
 
 =back
+
+=head1 IMAP COMPATIBILITY
+
+Basic Mail::IMAPClient method calls are also supported: close, connect,
+login, message_string, Password, and unseen.  Also, empty stubs are
+provided for Folder, folders, Peek, select, and Uid.
 
 =head1 REQUIREMENTS
 
