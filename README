@@ -10,3 +10,18 @@ To install Mail::POP3Client:
 
 
 Written by Sean Dowd <ssd@ticnet.com>.
+
+
+This is version 1.17 of Mail::POP3Client.  
+
+Changes from version 1.16 to 1.17:
+	+ fixed newline/carriage return problem in distribution.
+
+Changes from version 1.15 to 1.16:
+	+ replaced all occurences of chop with chomp.  Should make it
+	  more compatible on machines like the Mac.
+	+ Removed all uses of $_ =.  Uses locally declared variables
+	  now.
+	+ Now compiles with no warnings.
+
+
