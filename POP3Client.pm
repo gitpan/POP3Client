@@ -1,5 +1,5 @@
 #******************************************************************************
-# $Id: POP3Client.pm,v 2.11 2002/06/18 01:57:54 ssd Exp $
+# $Id: POP3Client.pm,v 2.12 2002/09/21 17:27:45 ssd Exp $
 #
 # Description:  POP3Client module - acts as interface to POP3 server
 # Author:       Sean Dowd <pop3client@dowds.net>
@@ -13,7 +13,7 @@
 package Mail::POP3Client;
 
 use strict;
-use Carp ();
+use Carp;
 use IO::Socket qw(SOCK_STREAM);
 
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK);
@@ -28,8 +28,8 @@ require Exporter;
 
 );
 
-my $ID =q( $Id: POP3Client.pm,v 2.11 2002/06/18 01:57:54 ssd Exp $ );
-$VERSION = substr q$Revision: 2.11 $, 10;
+my $ID =q( $Id: POP3Client.pm,v 2.12 2002/09/21 17:27:45 ssd Exp $ );
+$VERSION = substr q$Revision: 2.12 $, 10;
 
 
 # Preloaded methods go here.
@@ -200,8 +200,8 @@ sub Host
   my $me = shift;
   my $host = shift or return $me->{HOST};
 
-  $me->{INTERNET_ADDR} = inet_aton( $host ) or
-    $me->Message( "Could not inet_aton: $host, $!") and return;
+#  $me->{INTERNET_ADDR} = inet_aton( $host ) or
+#    $me->Message( "Could not inet_aton: $host, $!") and return;
   $me->{HOST} = $host;
 } # end host
 
@@ -309,7 +309,12 @@ sub Close
     # delete in all cases.  RFC says server can respond (in UPDATE
     # state only, otherwise always OK).
     my $line = $me->_sockread();
-
+    unless (defined $line) {
+	$me->Message("Socket read failed for QUIT");
+	# XXX: Should add the following?
+	#$me->State('DEAD');
+	return 0;
+    }
     $me->Message( $line );
     close( $me->Socket() ) or $me->Message("close failed: $!") and return 0;
     $me->State('DEAD');
@@ -431,6 +436,11 @@ sub Login_APOP
   $me->_checkstate('AUTHORIZATION', 'APOP') or return 0;
   $me->_sockprint( "APOP " , $me->User , ' ', $hash, $me->EOL );
   my $line = $me->_sockread();
+  unless (defined $line) {
+      $me->Message("Socket read failed for APOP");
+      $me->State('AUTHORIZATION');
+      return 0;
+  }
   chomp $line;
   $me->Message($line);
   $line =~ /^\+OK/ or $me->Message("APOP failed: $line") and return 0;
@@ -491,16 +501,28 @@ sub Login_Pass
   $me->_checkstate('AUTHORIZATION', 'USER') or return 0;
   $me->_sockprint( "USER " , $me->User() , $me->EOL );
   my $line = $me->_sockread();
+  unless (defined $line) {
+      $me->Message("Socket read failed for USER");
+      $me->State('AUTHORIZATION');
+      return 0;
+  }
   chomp $line;
   $me->Message($line);
-  $line =~ /^\+/ or $me->Message("USER failed: $line") and return 0;
-
+  $line =~ /^\+/ or $me->Message("USER failed: $line") and $me->State('AUTHORIZATION')
+    and return 0;
+  
   $me->_sockprint( "PASS " , $me->Pass() , $me->EOL );
   $line = $me->_sockread();
+  unless (defined $line) {
+      $me->Message("Socket read failed for PASS");
+      $me->State('AUTHORIZATION');
+      return 0;
+  }
   chomp $line;
   $me->Message($line);
-  $line =~ /^\+OK/ or $me->Message("PASS failed: $line") and return 0;
-
+  $line =~ /^\+OK/ or $me->Message("PASS failed: $line") and $me->State('AUTHORIZATION')
+    and return 0;
+  
   $me->State('TRANSACTION');
 
   $me->POPStat() or return 0;
@@ -526,12 +548,20 @@ sub Head
   $me->_checkstate('TRANSACTION', 'TOP') or return;
   $me->_sockprint( "TOP $num $lines", $me->EOL );
   my $line = $me->_sockread();
+  unless (defined $line) {
+      $me->Message("Socket read failed for TOP");
+      return;
+  }
   chomp $line;
   $line =~ /^\+OK/ or $me->Message("Bad return from TOP: $line") and return;
   $line =~ /^\+OK (\d+) / and my $buflen = $1;
 
   while (1) {
     $line = $me->_sockread();
+    unless (defined $line) {
+	$me->Message("Socket read failed for TOP");
+	return;
+    }
     last if $line =~ /^\.\s*$/;
     $line =~ s/^\.\././;
     $header .= $line;
@@ -553,12 +583,20 @@ sub HeadAndBody
   $me->_checkstate('TRANSACTION', 'RETR') or return;
   $me->_sockprint( "RETR $num", $me->EOL );
   my $line = $me->_sockread();
+  unless (defined $line) {
+      $me->Message("Socket read failed for RETR");
+      return;
+  }
   chomp $line;
   $line =~ /^\+OK/ or $me->Message("Bad return from RETR: $line") and return;
   $line =~ /^\+OK (\d+) / and my $buflen = $1;
 
   while (1) {
     $line = $me->_sockread();
+    unless (defined $line) {
+	$me->Message("Socket read failed for RETR");
+	return;
+    }
     last if $line =~ /^\.\s*$/;
     # convert any '..' at the start of a line to '.'
     $line =~ s/^\.\././;
@@ -584,12 +622,20 @@ sub HeadAndBodyToFile
   $me->_checkstate('TRANSACTION', 'RETR') or return;
   $me->_sockprint( "RETR $num", $me->EOL );
   my $line = $me->_sockread();
+  unless (defined $line) {
+      $me->Message("Socket read failed for RETR");
+      return 0;
+  }
   chomp $line;
   $line =~ /^\+OK/ or $me->Message("Bad return from RETR: $line") and return 0;
   $line =~ /^\+OK (\d+) / and my $buflen = $1;
 
   while (1) {
     $line = $me->_sockread();
+    unless (defined $line) {
+	$me->Message("Socket read failed for RETR");
+	return 0;
+    }
     last if $line =~ /^\.\s*$/;
     # convert any '..' at the start of a line to '.'
     $line =~ s/^\.\././;
@@ -612,6 +658,10 @@ sub Body
   $me->_checkstate('TRANSACTION', 'RETR') or return;
   $me->_sockprint( "RETR $num", $me->EOL );
   my $line = $me->_sockread();
+  unless (defined $line) {
+      $me->Message("Socket read failed for RETR");
+      return;
+  }
   chomp $line;
   $line =~ /^\+OK/ or $me->Message("Bad return from RETR: $line") and return;
   $line =~ /^\+OK (\d+) / and my $buflen = $1;
@@ -619,10 +669,18 @@ sub Body
   # skip the header
   do {
     $line = $me->_sockread();
+    unless (defined $line) {
+	$me->Message("Socket read failed for RETR");
+	return;
+    }
   } until $line =~ /^\s*$/;
 
   while (1) {
     $line = $me->_sockread();
+    unless (defined $line) {
+	$me->Message("Socket read failed for RETR");
+	return;
+    }
     last if $line =~ /^\.\s*$/;
     # convert any '..' at the start of a line to '.'
     $line =~ s/^\.\././;
@@ -648,6 +706,10 @@ sub BodyToFile
   $me->_checkstate('TRANSACTION', 'RETR') or return;
   $me->_sockprint( "RETR $num", $me->EOL );
   my $line = $me->_sockread();
+  unless (defined $line) {
+      $me->Message("Socket read failed for RETR");
+      return;
+  }
   chomp $line;
   $line =~ /^\+OK/ or $me->Message("Bad return from RETR: $line") and return;
   $line =~ /^\+OK (\d+) / and my $buflen = $1;
@@ -655,10 +717,18 @@ sub BodyToFile
   # skip the header
   do {
     $line = $me->_sockread();
+    unless (defined $line) {
+	$me->Message("Socket read failed for RETR");
+	return;
+    }
   } until $line =~ /^\s*$/;
 
   while (1) {
     $line = $me->_sockread();
+    unless (defined $line) {
+	$me->Message("Socket read failed for RETR");
+	return;
+    }
     chomp $line;
     last if $line =~ /^\.\s*$/;
     # convert any '..' at the start of a line to '.'
@@ -679,6 +749,10 @@ sub POPStat
   $me->_checkstate('TRANSACTION', 'STAT') or return -1;
   $me->_sockprint( "STAT", $me->EOL );
   my $line = $me->_sockread();
+  unless (defined $line) {
+      $me->Message("Socket read failed for STAT");
+      return -1;
+  }
   $line =~ /^\+OK/ or $me->Message("STAT failed: $line") and return -1;
   $line =~ /^\+OK (\d+) (\d+)/ and $me->Count($1), $me->Size($2);
 
@@ -704,6 +778,10 @@ sub List {
   $me->_sockprint($CMD, $num ? " $num" : '', $me->EOL());
 
   my $line = $me->_sockread();
+  unless (defined $line) {
+      $me->Message("Socket read failed for LIST");
+      return;
+  }
   $line =~ /^\+OK/ or $me->Message("$line") and return;
   if ($num) {
     $line =~ s/^\+OK\s*//;
@@ -737,6 +815,10 @@ sub ListArray {
   $me->_checkstate('TRANSACTION', $CMD) or return;
   $me->_sockprint($CMD, $num ? " $num" : '', $me->EOL());
   my $line = $me->_sockread();
+  unless (defined $line) {
+      $me->Message("Socket read failed for LIST");
+      return;
+  }
   $line =~ /^\+OK/ or $me->Message("$line") and return;
   if ($num) {
     $line =~ s/^\+OK\s*//;
@@ -781,6 +863,10 @@ sub Last
   $me->_checkstate('TRANSACTION', 'LAST') or return;
   $me->_sockprint( "LAST", $me->EOL );
   my $line = $me->_sockread();
+  unless (defined $line) {
+      $me->Message("Socket read failed for LAST");
+      return 0;
+  }
 
   $line =~ /\+OK (\d+)\D*$/ and return $1;
 }
@@ -796,6 +882,10 @@ sub Reset
   $me->_checkstate('TRANSACTION', 'RSET') or return;
   $me->_sockprint( "RSET", $me->EOL );
   my $line = $me->_sockread();
+  unless (defined $line) {
+      $me->Message("Socket read failed for RSET");
+      return 0;
+  }
   $line =~ /^\+OK/ and return 1;
   return 0;
 }
@@ -811,6 +901,10 @@ sub Delete {
   $me->_checkstate('TRANSACTION', 'DELE') or return;
   $me->_sockprint( "DELE $num",  $me->EOL );
   my $line = $me->_sockread();
+  unless (defined $line) {
+      $me->Message("Socket read failed for DELE");
+      return 0;
+  }
   $me->Message($line);
   $line =~ /^\+OK/ && return 1;
   return 0;
@@ -833,6 +927,10 @@ sub Uidl
   $me->_checkstate('TRANSACTION', 'UIDL') or return;
   $me->_sockprint('UIDL', $num ? " $num" : '', $me->EOL());
   my $line = $me->_sockread();
+  unless (defined $line) {
+      $me->Message("Socket read failed for UIDL");
+      return;
+  }
   $line =~ /^\+OK/ or $me->Message($line) and return;
   if ($num) {
     $line =~ s/^\+OK\s*//;
@@ -919,6 +1017,9 @@ sub _sockread
 {
   my $me = shift;
   my $line = $me->Socket()->getline();
+  unless (defined $line) {
+      return;
+  }
 
   # Macs seem to leave CR's or LF's sitting on the socket.  This
   # removes them.

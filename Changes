@@ -1,6 +1,11 @@
 Revision history for Perl extension Mail::POP3Client.
 
-This is version 2.11 of Mail::POP3Client.
+This is version 2.12 of Mail::POP3Client.
+
+2.12 2002/09/21
+	+ changed calls to _sockread to check for undef on return
+          value.
+	+ removed unused call to inet_aton (support perl 5.8.0)
 
 2.11 2002/06/17
 	+ CRAM-MD5 Authentication support (Ville Skytta)
