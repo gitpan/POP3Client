@@ -1,5 +1,5 @@
 #******************************************************************************
-# $Id: POP3Client.pm,v 1.17 1998/09/08 08:15:05 ssd Exp $
+# $Id: POP3Client.pm,v 1.18 1998/10/01 08:15:05 ssd Exp $
 #
 # Description:  POP3Client module - acts as interface to POP3 server
 # Author:       Sean Dowd <ssd@ticnet.com>
@@ -184,8 +184,8 @@ use Socket qw(PF_INET SOCK_STREAM AF_INET);
 $sockaddr = 'S n a4 x8';      # shouldn't this be in Socket.pm?
 $fhcnt = 0;                   # for creating unique filehandles
 
-$ID =q( $Id: POP3Client.pm,v 1.17 1998/09/08 08:15:05 ssd Exp $ );
-$VERSION = substr q$Revision: 1.17 $, 10;
+$ID =q( $Id: POP3Client.pm,v 1.18 1998/10/01 08:15:05 ssd Exp $ );
+$VERSION = substr q$Revision: 1.18 $, 10;
 
 #******************************************************************************
 #* constructor
@@ -214,7 +214,6 @@ sub new
 		EOL => "\015\012",
 	}, $name;
 
-	$/ = $me->EOL();
 	if ($me->User($user) and $me->Pass($pass) and 
 		$me->Host($host) and $me->Port($port)) {
 		$me->Connect();
@@ -541,7 +540,7 @@ sub Body
 	} until $line =~ /^\s*$/;
 
 	do {
-		$$line = <$s>;
+		$line = <$s>;
 		$line =~ /^\.\s*$/ or $body .= $line;
 	} until $line =~ /^\.\s*$/;
 

@@ -12,7 +12,13 @@ To install Mail::POP3Client:
 Written by Sean Dowd <ssd@ticnet.com>.
 
 
-This is version 1.17 of Mail::POP3Client.  
+This is version 1.18 of Mail::POP3Client.  
+
+Changes from version 1.17 to 1.18:
+	+ fixed typo in Body ($$line = ...)
+	+ remove set of $\
+	+ once again, fix the distribution (this time I built it on a
+	  Unix box.  Thanks to Terry Sigle.)
 
 Changes from version 1.16 to 1.17:
 	+ fixed newline/carriage return problem in distribution.
