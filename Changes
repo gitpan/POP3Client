@@ -1,6 +1,9 @@
 Revision history for Perl extension Mail::POP3Client.
 
-This is version 2.8 of Mail::POP3Client.
+This is version 2.9 of Mail::POP3Client.
+
+2.9  2001/08/18
+        + Fixed bad value for VERSION.
 
 2.8  2001/08/15
 	+ add patch for setting LOCALADDR for multi-address machines.
