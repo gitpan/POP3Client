@@ -1,5 +1,5 @@
 #******************************************************************************
-# $Id: POP3Client.pm,v 2.10 2001/09/08 20:22:47 ssd Exp $
+# $Id: POP3Client.pm,v 2.11 2002/06/18 01:57:54 ssd Exp $
 #
 # Description:  POP3Client module - acts as interface to POP3 server
 # Author:       Sean Dowd <pop3client@dowds.net>
@@ -13,9 +13,8 @@
 package Mail::POP3Client;
 
 use strict;
-use Carp;
-use IO::Socket;
-use Config;
+use Carp ();
+use IO::Socket qw(SOCK_STREAM);
 
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK);
 
@@ -26,11 +25,11 @@ require Exporter;
 # names by default without a very good reason. Use EXPORT_OK instead.
 # Do not simply export all your public functions/methods/constants.
 @EXPORT = qw(
-	
+
 );
 
-my $ID =q( $Id: POP3Client.pm,v 2.10 2001/09/08 20:22:47 ssd Exp $ );
-$VERSION = substr q$Revision: 2.10 $, 10;
+my $ID =q( $Id: POP3Client.pm,v 2.11 2002/06/18 01:57:54 ssd Exp $ );
+$VERSION = substr q$Revision: 2.11 $, 10;
 
 
 # Preloaded methods go here.
@@ -40,7 +39,7 @@ $VERSION = substr q$Revision: 2.10 $, 10;
 #* new Mail::POP3Client( USER => user,
 #*                       PASSWORD => pass,
 #*                       HOST => host,
-#*                       AUTH_MODE => [BEST|APOP|PASS],
+#*                       AUTH_MODE => [BEST|APOP|CRAM-MD5|PASS],
 #*                       TIMEOUT => 30,
 #*                       LOCALADDR => 'xxx.xxx.xxx.xxx[:xx]',
 #*                       DEBUG => 1 );
@@ -68,7 +67,7 @@ sub new
 	      LOCALADDR => undef,
 	     };
   $self->{tranlog} = ();
-  $Config{osname} =~ /MacOS/i && ($self->{STRIPCR} = 1);
+  $^O =~ /MacOS/i && ($self->{STRIPCR} = 1);
   bless( $self, $classname );
   $self->_init( @_ );
 
@@ -176,7 +175,7 @@ sub Debug
   my $me = shift;
   my $debug = shift or return $me->{DEBUG};
   $me->{DEBUG} = $debug;
-  
+
 } # end Debug
 
 
@@ -187,7 +186,7 @@ sub Port
 {
   my $me = shift;
   my $port = shift or return $me->{PORT};
-  
+
   $me->{PORT} = $port;
 
 } # end port
@@ -215,7 +214,7 @@ sub LocalAddr
   my $addr = shift or return $me->{LOCALADDR};
 
   $me->{LOCALADDR} = $addr;
-} 
+}
 
 
 #******************************************************************************
@@ -235,7 +234,7 @@ sub User
   my $me = shift;
   my $user = shift or return $me->{USER};
   $me->{USER} = $user;
-  
+
 } # end User
 
 
@@ -247,12 +246,12 @@ sub Pass
   my $me = shift;
   my $pass = shift or return $me->{PASSWORD};
   $me->{PASSWORD} = $pass;
-  
+
 } # end Pass
 
 
 #******************************************************************************
-#* 
+#*
 #******************************************************************************
 sub Count
 {
@@ -263,7 +262,7 @@ sub Count
   } else {
     return $me->{COUNT};
   }
-    
+
 } # end Count
 
 
@@ -279,12 +278,12 @@ sub Size
   } else {
     return $me->{SIZE};
   }
-  
+
 } # end Size
 
 
 #******************************************************************************
-#* 
+#*
 #******************************************************************************
 sub EOL {
   my $me = shift;
@@ -293,20 +292,24 @@ sub EOL {
 
 
 #******************************************************************************
-#* 
+#*
 #******************************************************************************
 sub Close
 {
   my $me = shift;
-  if ($me->Alive()) {
-    my $s = $me->Socket();
+
+  # only send the QUIT message is the socket is still connected.  Some
+  # POP3 servers close the socket after a failed authentication.  It
+  # is unclear whether the RFC allows this or not, so we'll attempt to
+  # check the condition of the socket before sending data here.
+  if ($me->Alive() && $me->Socket() && $me->Socket()->connected() ) {
     $me->_sockprint( "QUIT", $me->EOL );
 
     # from Patrick Bourdon - need this because some servers do not
     # delete in all cases.  RFC says server can respond (in UPDATE
     # state only, otherwise always OK).
     my $line = $me->_sockread();
-    
+
     $me->Message( $line );
     close( $me->Socket() ) or $me->Message("close failed: $!") and return 0;
     $me->State('DEAD');
@@ -317,7 +320,7 @@ sub Close
 
 
 #******************************************************************************
-#* 
+#*
 #******************************************************************************
 sub DESTROY
 {
@@ -332,7 +335,7 @@ sub DESTROY
 sub Connect
 {
   my ($me, $host, $port) = @_;
-  
+
   $host and $me->Host($host);
   $port and $me->Port($port);
 
@@ -344,14 +347,14 @@ sub Connect
 				 Type      => SOCK_STREAM,
 				 LocalAddr => $me->LocalAddr(),
 				 Timeout   => $me->{TIMEOUT} )
-    or 
+    or
       $me->Message( "could not connect socket [$me->{HOST}, $me->{PORT}]: $!" )
 	and
 	  return 0;
   $me->{SOCKET} = $s;
 
   $s->autoflush( 1 );
-  
+
   defined(my $msg = $me->_sockread()) or $me->Message("Could not read") and return 0;
   chomp $msg;
   $me->{BANNER}= $msg;
@@ -359,45 +362,54 @@ sub Connect
   # add check for servers that return -ERR on connect (not in RFC1939)
   $me->Message($msg);
   $msg =~ /^\+OK/i || return 0;
-  
+
   $me->{MESG_ID}= $1 if ($msg =~ /(<[\w\d\-\.]+\@[\w\d\-\.]+>)/);
   $me->Message($msg);
-  
+
   $me->State('AUTHORIZATION');
   defined($me->User()) and defined($me->Pass()) and $me->Login();
-  
+
 } # end Connect
 
 
 #******************************************************************************
-#* login to the POP server.  If the AUTH_MODE is set to BEST, and the server
+#* login to the POP server. If the AUTH_MODE is set to BEST, and the server
 #* appears to support APOP, it will try APOP, if that fails, then it will try
-#* PASS.  If the AUTH_MODE is set to APOP, and the server appears to supports
-#* APOP, it will use APOP or it will fail to log in.
-#* Otherwise password is sent in clear text.
+#* SASL CRAM-MD5 if the server appears to support it, and finally PASS.
+#* If the AUTH_MODE is set to APOP, and the server appears to support APOP, it
+#* will use APOP or it will fail to log in. Likewise, for AUTH_MODE CRAM-MD5,
+#* no PASS-fallback is made. Otherwise password is sent in clear text.
 #******************************************************************************
 sub Login
 {
   my $me= shift;
 
   if ($me->{AUTH_MODE} eq 'BEST') {
-      if ($me->{MESG_ID}) {
-        my $retval = $me->Login_APOP();
-
-        return($retval) if ($me->State eq 'TRANSACTION');
-        }
-      }
+    my $retval;
+    if ($me->{MESG_ID}) {
+      $retval = $me->Login_APOP();
+      return($retval) if ($me->State eq 'TRANSACTION');
+    }
+    my $has_cram_md5 = 0;
+    foreach my $capa ($me->Capa()) {
+      $capa =~ /^SASL.*?\sCRAM-MD5\b/ and $has_cram_md5 = 1 and last;
+    }
+    if ($has_cram_md5) {
+      $retval = $me->Login_CRAM_MD5();
+      return($retval) if ($me->State() eq 'TRANSACTION');
+    }
+  }
   elsif ($me->{AUTH_MODE} eq 'APOP') {
-
-      return(0) if (!$me->{MESG_ID});   # fail if the server does not support APOP
-
-      return($me->Login_APOP());
-      }
+    return(0) if (!$me->{MESG_ID});   # fail if the server does not support APOP
+    return($me->Login_APOP());
+  }
+  elsif ($me->{AUTH_MODE} eq 'CRAM-MD5') {
+    return($me->Login_CRAM_MD5());
+  }
   elsif ($me->{AUTH_MODE} ne 'PASS') {
-      $me->Message("Programing error. AUTH_MODE (".$me->{AUTH_MODE}.") not BEST | APOP | PASS.");
-      return(0);
-      }
-
+    $me->Message("Programing error. AUTH_MODE (".$me->{AUTH_MODE}.") not BEST | APOP | CRAM-MD5 | PASS.");
+    return(0);
+  }
   return($me->Login_Pass());
 }
 
@@ -407,20 +419,64 @@ sub Login
 #******************************************************************************
 sub Login_APOP
 {
-  require MD5;
-  
   my $me = shift;
-  my $s = $me->Socket();
-  my $hash= MD5->hexhash ($me->{MESG_ID} . $me->Pass);
-  
+
+  eval {
+    require Digest::MD5;
+  };
+  $@ and $me->Message("APOP failed: $@") and return 0;
+
+  my $hash = Digest::MD5::md5_hex($me->{MESG_ID} . $me->Pass());
+
+  $me->_checkstate('AUTHORIZATION', 'APOP') or return 0;
   $me->_sockprint( "APOP " , $me->User , ' ', $hash, $me->EOL );
   my $line = $me->_sockread();
   chomp $line;
   $me->Message($line);
-  $line =~ /^\+OK/ or $me->Message("APOP failed: $line") and $me->State('AUTHORIZATION')
-    and return 0;
+  $line =~ /^\+OK/ or $me->Message("APOP failed: $line") and return 0;
   $me->State('TRANSACTION');
-  
+
+  $me->POPStat() or return 0;
+}
+
+
+#******************************************************************************
+#* login to the POP server using CRAM-MD5 (RFC 2195) authentication.
+#******************************************************************************
+sub Login_CRAM_MD5
+{
+  my $me = shift;
+
+  eval {
+    require Digest::HMAC_MD5;
+    require MIME::Base64;
+  };
+  $@ and $me->Message("AUTH CRAM-MD5 failed: $@") and return 0;
+
+  $me->_checkstate('AUTHORIZATION', 'AUTH') or return 0;
+  $me->_sockprint('AUTH CRAM-MD5', $me->EOL());
+  my $line = $me->_sockread();
+  chomp $line;
+  $me->Message($line);
+
+  if ($line =~ /^\+ (.+)$/) {
+
+    my $hmac =
+      Digest::HMAC_MD5::hmac_md5_hex(MIME::Base64::decode($1), $me->Pass());
+    $me->_sockprint(MIME::Base64::encode($me->User() . " $hmac", $me->EOL()));
+
+    $line = $me->_sockread();
+    chomp $line;
+    $me->Message($line);
+    $line =~ /^\+OK/ or
+      $me->Message("AUTH CRAM-MD5 failed: $line") and return 0;
+
+  } else {
+    $me->Message("AUTH CRAM-MD5 failed: $line") and return 0;
+  }
+
+  $me->State('TRANSACTION');
+
   $me->POPStat() or return 0;
 }
 
@@ -431,25 +487,24 @@ sub Login_APOP
 sub Login_Pass
 {
   my $me = shift;
-  my $s = $me->Socket();
+
+  $me->_checkstate('AUTHORIZATION', 'USER') or return 0;
   $me->_sockprint( "USER " , $me->User() , $me->EOL );
   my $line = $me->_sockread();
   chomp $line;
   $me->Message($line);
-  $line =~ /^\+/ or $me->Message("USER failed: $line") and $me->State('AUTHORIZATION')
-    and return 0;
-  
+  $line =~ /^\+/ or $me->Message("USER failed: $line") and return 0;
+
   $me->_sockprint( "PASS " , $me->Pass() , $me->EOL );
   $line = $me->_sockread();
   chomp $line;
   $me->Message($line);
-  $line =~ /^\+OK/ or $me->Message("PASS failed: $line") and $me->State('AUTHORIZATION')
-    and return 0;
-  
+  $line =~ /^\+OK/ or $me->Message("PASS failed: $line") and return 0;
+
   $me->State('TRANSACTION');
 
   $me->POPStat() or return 0;
-  
+
 } # end Login
 
 
@@ -465,22 +520,23 @@ sub Head
   my $lines = shift;
   $lines ||= 0;
   $lines =~ /\d+/ || ($lines = 0);
+
   my $header = '';
-  my $s = $me->Socket();
-  
+
+  $me->_checkstate('TRANSACTION', 'TOP') or return;
   $me->_sockprint( "TOP $num $lines", $me->EOL );
   my $line = $me->_sockread();
   chomp $line;
   $line =~ /^\+OK/ or $me->Message("Bad return from TOP: $line") and return;
   $line =~ /^\+OK (\d+) / and my $buflen = $1;
-  
+
   while (1) {
     $line = $me->_sockread();
     last if $line =~ /^\.\s*$/;
     $line =~ s/^\.\././;
     $header .= $line;
   }
-  
+
   return wantarray ? split(/\r?\n/, $header) : $header;
 } # end Head
 
@@ -493,24 +549,24 @@ sub HeadAndBody
   my $me = shift;
   my $num = shift;
   my $mandb = '';
-  my $s = $me->Socket();
-  
+
+  $me->_checkstate('TRANSACTION', 'RETR') or return;
   $me->_sockprint( "RETR $num", $me->EOL );
   my $line = $me->_sockread();
   chomp $line;
   $line =~ /^\+OK/ or $me->Message("Bad return from RETR: $line") and return;
   $line =~ /^\+OK (\d+) / and my $buflen = $1;
-  
+
   while (1) {
     $line = $me->_sockread();
     last if $line =~ /^\.\s*$/;
-    # convert any '..' at the start of a line to '.'  
-    $line =~ s/^\.\././;  
-    $mandb .= $line;  
-  } 
-  
+    # convert any '..' at the start of a line to '.'
+    $line =~ s/^\.\././;
+    $mandb .= $line;
+  }
+
   return wantarray ? split(/\r?\n/, $mandb) : $mandb;
-  
+
 } # end HeadAndBody
 
 
@@ -524,18 +580,18 @@ sub HeadAndBodyToFile
   my $fh = shift;
   my $num = shift;
   my $body = '';
-  my $s = $me->Socket();
-  
+
+  $me->_checkstate('TRANSACTION', 'RETR') or return;
   $me->_sockprint( "RETR $num", $me->EOL );
   my $line = $me->_sockread();
   chomp $line;
   $line =~ /^\+OK/ or $me->Message("Bad return from RETR: $line") and return 0;
   $line =~ /^\+OK (\d+) / and my $buflen = $1;
-  
+
   while (1) {
     $line = $me->_sockread();
     last if $line =~ /^\.\s*$/;
-    # convert any '..' at the start of a line to '.'  
+    # convert any '..' at the start of a line to '.'
     $line =~ s/^\.\././;
     print $fh $line;
   }
@@ -552,29 +608,29 @@ sub Body
   my $me = shift;
   my $num = shift;
   my $body = '';
-  my $s = $me->Socket();
-  
+
+  $me->_checkstate('TRANSACTION', 'RETR') or return;
   $me->_sockprint( "RETR $num", $me->EOL );
   my $line = $me->_sockread();
   chomp $line;
   $line =~ /^\+OK/ or $me->Message("Bad return from RETR: $line") and return;
   $line =~ /^\+OK (\d+) / and my $buflen = $1;
-  
+
   # skip the header
   do {
     $line = $me->_sockread();
   } until $line =~ /^\s*$/;
-  
+
   while (1) {
     $line = $me->_sockread();
     last if $line =~ /^\.\s*$/;
-    # convert any '..' at the start of a line to '.'  
-    $line =~ s/^\.\././;  
-    $body .= $line;  
-  } 
-  
+    # convert any '..' at the start of a line to '.'
+    $line =~ s/^\.\././;
+    $body .= $line;
+  }
+
   return wantarray ? split(/\r?\n/, $body) : $body;
-  
+
 } # end Body
 
 
@@ -588,27 +644,27 @@ sub BodyToFile
   my $fh = shift;
   my $num = shift;
   my $body = '';
-  my $s = $me->Socket();
-  
+
+  $me->_checkstate('TRANSACTION', 'RETR') or return;
   $me->_sockprint( "RETR $num", $me->EOL );
   my $line = $me->_sockread();
   chomp $line;
   $line =~ /^\+OK/ or $me->Message("Bad return from RETR: $line") and return;
   $line =~ /^\+OK (\d+) / and my $buflen = $1;
-  
+
   # skip the header
   do {
     $line = $me->_sockread();
   } until $line =~ /^\s*$/;
-  
+
   while (1) {
     $line = $me->_sockread();
     chomp $line;
     last if $line =~ /^\.\s*$/;
-    # convert any '..' at the start of a line to '.'  
+    # convert any '..' at the start of a line to '.'
     $line =~ s/^\.\././;
     print $fh $line, "\n";
-  } 
+  }
 } # end BodyToFile
 
 
@@ -616,15 +672,16 @@ sub BodyToFile
 #******************************************************************************
 #* handle a STAT command - returns the number of messages in the box
 #******************************************************************************
-sub POPStat {
+sub POPStat
+{
   my $me = shift;
-  my $s = $me->Socket();
-  
+
+  $me->_checkstate('TRANSACTION', 'STAT') or return -1;
   $me->_sockprint( "STAT", $me->EOL );
   my $line = $me->_sockread();
   $line =~ /^\+OK/ or $me->Message("STAT failed: $line") and return -1;
   $line =~ /^\+OK (\d+) (\d+)/ and $me->Count($1), $me->Size($2);
-  
+
   return $me->Count();
 }
 
@@ -637,22 +694,15 @@ sub List {
   my $num = shift || '';
   my $CMD = shift || 'LIST';
   $CMD=~ tr/a-z/A-Z/;
-  
-  my $s = $me->Socket();
+
   $me->Alive() or return;
-  
+
   my @retarray = ();
   my $ret = '';
 
-  # apparently there is a server that cannot handle 'LIST '.
-  if ( $num )
-    {
-      $me->_sockprint( "$CMD $num", $me->EOL );
-    }
-  else
-    {
-      $me->_sockprint( "$CMD", $me->EOL );
-    }
+  $me->_checkstate('TRANSACTION', $CMD) or return;
+  $me->_sockprint($CMD, $num ? " $num" : '', $me->EOL());
+
   my $line = $me->_sockread();
   $line =~ /^\+OK/ or $me->Message("$line") and return;
   if ($num) {
@@ -678,14 +728,14 @@ sub ListArray {
   my $num = shift || '';
   my $CMD = shift || 'LIST';
   $CMD=~ tr/a-z/A-Z/;
-  
-  my $s = $me->Socket();
+
   $me->Alive() or return;
-  
+
   my @retarray = ();
   my $ret = '';
-  
-  $me->_sockprint( "$CMD $num", $me->EOL );
+
+  $me->_checkstate('TRANSACTION', $CMD) or return;
+  $me->_sockprint($CMD, $num ? " $num" : '', $me->EOL());
   my $line = $me->_sockread();
   $line =~ /^\+OK/ or $me->Message("$line") and return;
   if ($num) {
@@ -724,14 +774,14 @@ sub RetrieveToFile {
 #******************************************************************************
 #* implement the LAST command - see the rfc (1081) OBSOLETED by RFC
 #******************************************************************************
-sub Last {
+sub Last
+{
   my $me = shift;
-  
-  my $s = $me->Socket();
-  
+
+  $me->_checkstate('TRANSACTION', 'LAST') or return;
   $me->_sockprint( "LAST", $me->EOL );
   my $line = $me->_sockread();
-  
+
   $line =~ /\+OK (\d+)\D*$/ and return $1;
 }
 
@@ -739,10 +789,11 @@ sub Last {
 #******************************************************************************
 #* reset the deletion stat
 #******************************************************************************
-sub Reset {
+sub Reset
+{
   my $me = shift;
-  
-  my $s = $me->Socket();
+
+  $me->_checkstate('TRANSACTION', 'RSET') or return;
   $me->_sockprint( "RSET", $me->EOL );
   my $line = $me->_sockread();
   $line =~ /^\+OK/ and return 1;
@@ -756,8 +807,8 @@ sub Reset {
 sub Delete {
   my $me = shift;
   my $num = shift || return;
-  
-  my $s = $me->Socket();
+
+  $me->_checkstate('TRANSACTION', 'DELE') or return;
   $me->_sockprint( "DELE $num",  $me->EOL );
   my $line = $me->_sockread();
   $me->Message($line);
@@ -769,17 +820,18 @@ sub Delete {
 #******************************************************************************
 #* UIDL - submitted by Dion Almaer (dion@member.com)
 #******************************************************************************
-sub Uidl {
+sub Uidl
+{
   my $me = shift;
   my $num = shift || '';
-  
-  my $s = $me->Socket();
+
   $me->Alive() or return;
-  
+
   my @retarray = ();
   my $ret = '';
-  
-  $me->_sockprint( "UIDL $num", $me->EOL );
+
+  $me->_checkstate('TRANSACTION', 'UIDL') or return;
+  $me->_sockprint('UIDL', $num ? " $num" : '', $me->EOL());
   my $line = $me->_sockread();
   $line =~ /^\+OK/ or $me->Message($line) and return;
   if ($num) {
@@ -799,6 +851,54 @@ sub Uidl {
 }
 
 
+#******************************************************************************
+#* CAPA - query server capabilities, see RFC 2449
+#******************************************************************************
+sub Capa {
+
+  my $me = shift;
+
+  # no state check here, all are allowed
+
+  $me->Alive() or return;
+
+  my @retarray = ();
+  my $ret = '';
+
+  $me->_sockprint('CAPA', $me->EOL());
+
+  my $line = $me->_sockread();
+  $line =~ /^\+OK/ or $me->Message($line) and return;
+
+  while(defined($line = $me->_sockread())) {
+    $line =~ /^\.\s*$/ and last;
+    $ret .= $line;
+    chomp $line;
+    push(@retarray, $line);
+  }
+
+  if ($ret) {
+    return wantarray ? @retarray : $ret;
+  }
+}
+
+
+#*****************************************************************************
+#* Check the state before issuing a command
+#*****************************************************************************
+sub _checkstate
+{
+  my ($me, $state, $cmd) = @_;
+  my $currstate = $me->State();
+  if ($currstate ne $state) {
+    $me->Message("POP3 command $cmd may be given only in the '$state' state " .
+                 "(current state is '$currstate').");
+    return 0;
+  } else {
+    return 1;
+  }
+}
+
 
 #*****************************************************************************
 #* funnel all read/write through here to allow easier debugging
@@ -808,7 +908,7 @@ sub _sockprint
 {
   my $me = shift;
   my $s = $me->Socket();
-  $me->Debug and carp "POP3 -> ", @_;
+  $me->Debug and Carp::carp "POP3 -> ", @_;
   my $outline = "@_";
   chomp $outline;
   push(@{$me->{tranlog}}, $outline);
@@ -823,8 +923,8 @@ sub _sockread
   # Macs seem to leave CR's or LF's sitting on the socket.  This
   # removes them.
   $me->{STRIPCR} && ($line =~ s/^[\r]+//);
-  
-  $me->Debug and carp "POP3 <- ", $line;
+
+  $me->Debug and Carp::carp "POP3 <- ", $line;
   $line =~ /^[\\+\\-](OK|ERR)/i && do {
     my $l = $line;
     chomp $l;
@@ -867,7 +967,7 @@ Mail::POP3Client - Perl 5 module to talk to a POP3 (RFC1939) server
   $pop2 = new Mail::POP3Client( HOST  => "pop3.otherdo.main" );
   $pop2->User( "somebody" );
   $pop2->Pass( "doublesecret" );
-  $pop2->Connect() || die $pop2->Message();
+  $pop2->Connect() >= 0 || die $pop2->Message();
   $pop2->Close();
 
 =head1 DESCRIPTION
@@ -881,9 +981,9 @@ Here is a simple example to list out the From: and Subject: headers in
 your remote mailbox:
 
   #!/usr/local/bin/perl
-  
+
   use Mail::POP3Client;
-  
+
   $pop = new Mail::POP3Client( USER     => "me",
 			       PASSWORD => "mypassword",
 			       HOST     => "pop3.do.main" );
@@ -963,17 +1063,19 @@ new will attempt to Connect to and Login to the POP3 server if you
 supply a USER and PASSWORD.  If you do not supply them in the
 constructor, you will need to call Connect yourself.
 
-The valid values for AUTH_MODE are 'BEST', 'PASS' and 'APOP'.  BEST
-says to try APOP if the server appears to support it and it can be
-used to successfully log on, otherwise revert to PASS.  APOP implies
-that an MD5 checksum will be used instead of sending your password in
-cleartext.  However, B<if the server does not claim to support APOP,
-the cleartext method will be used.  Be careful.> There are a few
+The valid values for AUTH_MODE are 'BEST', 'PASS', 'APOP' and 'CRAM-MD5'.
+BEST says to try APOP if the server appears to support it and it can be
+used to successfully log on, next try similarly with CRAM-MD5, and finally
+revert to PASS. APOP and CRAM-MD5 imply that an MD5 checksum will be
+used instead of sending your password in cleartext.  However,
+B<if the server does not claim to support APOP or CRAM-MD5,
+the cleartext method will be used. Be careful.> There are a few
 servers that will send a timestamp in the banner greeting, but APOP
 will not work with them (for instance if the server does not know your
 password in cleartext).  If you think your authentication information
 is correct, run in DEBUG mode and look for errors regarding
 authorization.  If so, then you may have to use 'PASS' for that server.
+The same applies to CRAM-MD5, too.
 
 If you enable debugging with DEBUG => 1, socket traffic will be echoed
 to STDERR.
@@ -1044,7 +1146,7 @@ Same as HeadAndBodyToFile.
 =item I<Delete>( MESSAGE_NUMBER )
 
 Mark the specified message number as DELETED.  Becomes effective upon
-QUIT.  Can be reset with a Reset message.
+QUIT (invoking the Close method).  Can be reset with a Reset message.
 
 =item I<Connect>
 
@@ -1115,6 +1217,11 @@ Return the unique ID for the given message (or all of them).  Returns
 an indexed array with an entry for each valid message number.
 Indexing begins at 1 to coincide with the server's indexing.
 
+=item I<Capa>
+
+Query server capabilities, as described in RFC 2449. Returns the
+capabilities in an array. Valid in all states.
+
 =item I<Last>
 
 Return the number of the last message, retrieved from the server.
@@ -1145,6 +1252,12 @@ Set/Return the current port number.
 
 =back
 
+=head1 REQUIREMENTS
+
+This module does not have mandatory requirements for modules that are not part
+of the standard Perl distribution. However, APOP needs need Digest::MD5 and
+CRAM-MD5 needs Digest::HMAC_MD5 and MIME::Base64.
+
 =head1 AUTHOR
 
 Sean Dowd <pop3client@dowds.net>
@@ -1156,6 +1269,14 @@ Based loosely on News::NNTPClient by Rodger Anderson
 
 =head1 SEE ALSO
 
-perl(1).
+perl(1)
+
+the Digest::MD5 manpage, the Digest::HMAC_MD5 manpage, the MIME::Base64 manpage
+
+RFC 1939: Post Office Protocol - Version 3
+
+RFC 2195: IMAP/POP AUTHorize Extension for Simple Challenge/Response
+
+RFC 2449: POP3 Extension Mechanism
 
 =cut

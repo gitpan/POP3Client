@@ -1,6 +1,11 @@
 Revision history for Perl extension Mail::POP3Client.
 
-This is version 2.10 of Mail::POP3Client.
+This is version 2.11 of Mail::POP3Client.
+
+2.11 2002/06/17
+	+ CRAM-MD5 Authentication support (Ville Skytta)
+	+ CAPA support (Ville Skytta)
+	+ fixed perldoc regarding return value of Connect()
 
 2.10 2001/09/08
         + Corrected problem where login was not attempted if password

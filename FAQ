@@ -84,4 +84,9 @@ accounts.
 
 6. Can't use an undefined value as a symbol reference [...] during global destruction.
 
-Add 'use strict' and -w and fix all of the warnings.
+First, add 'use strict' and -w and fix all of the warnings in your
+script.  If this error still occurs, please send me the type of server
+you are using (telnet to port 110 on the server and send me the first
+line it sends you).  Some POP3 servers drop the connection after a failed
+authentication.  The servers I have tested against do not appear to do
+this.
