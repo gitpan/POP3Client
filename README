@@ -1,57 +1,35 @@
-This is a POP3Client module for perl5.  It provides an object-oriented
-interface to a POP3 server.  It can be used to write perl-based biff
-clients, mail readers, or whatever.  See the inline POD doco for more
-details.
+WHAT IS IT?
+
+This is a POP3 client module for perl5.  It provides an
+object-oriented interface to a POP3 server.  It can be used to write
+perl-based biff clients, mail readers, or whatever.  See the inline
+POD doco for more details.  (perldoc Mail::POP3Client)
+
+
+HOW DO I INSTALL/TEST IT?
 
 To install Mail::POP3Client:
 
 % perl Makefile.PL
+% make
+% make test
 % make install
 
+NOTE: if you want to test against a real mailbox, set the environment
+variable POPTESTACCOUNT to some POP3 account in the following format:
+user:password:host.
 
-Written by Sean Dowd <dowd@home.com>.
+% export POPTESTACCOUNT=jsmith:secret:pop3.my.do.main
+% make test
 
 
-This is version 1.21 of Mail::POP3Client.  
+WHERE IS THE DOCUMENTATION?
 
-Changes from version 1.23 to 1.23:
-	+ fixed bug in Head when optional number of lines is not passed,
-	  set to zero if undefined or non-numeric (submitted by Bjoern
-	  Kriews <bkr@cut.de>)
+The documentation is in the code in POD format.  To read it, use
+'perldoc Mail::POP3Client' or you can extract it to html using
+pod2html.
 
-Changes from version 1.21 to 1.22:
-	+ change Retrieve to return HeadAndBody.  It was using too
-	  much memory by building both an array and a string to
-	  return.
 
-Changes from version 1.19 to 1.21:
-	+ add SYNOPSIS info for perldoc.
-	+ add support for previewing messages using second integer
-	  argument to Head, as in $pop->Head( 0, 10 ), which would get
-	  the headers and the first 10 lines of the body for message
-	  0.  Contributed by Dennis Moroney <dennis@hub.iwl.net>
-	+ convert prints to carps.
-	+ change local to my.
-
-Changes from version 1.18 to 1.19:
-	+ added basic APOP support patches from Gerhard Gonter
-	  <gonter@falbala.wu-wien.ac.at>.  Login does not currently
-	  auto-detect APOP on the server.
-
-Changes from version 1.17 to 1.18:
-	+ fixed typo in Body ($$line = ...)
-	+ remove set of $\
-	+ once again, fix the distribution (this time I built it on a
-	  Unix box.  Thanks to Terry Sigle.)
-
-Changes from version 1.16 to 1.17:
-	+ fixed newline/carriage return problem in distribution.
-
-Changes from version 1.15 to 1.16:
-	+ replaced all occurences of chop with chomp.  Should make it
-	  more compatible on machines like the Mac.
-	+ Removed all uses of $_ =.  Uses locally declared variables
-	  now.
-	+ Now compiles with no warnings.
+Written by Sean Dowd <dowd@home.com> or <sdowd@arcmail.com>.
 
 

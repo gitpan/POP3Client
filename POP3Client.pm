@@ -1,10 +1,10 @@
 #******************************************************************************
-# $Id: POP3Client.pm,v 1.23 1999/04/16 17:51:53 sdowd Exp $
+# $Id: POP3Client.pm,v 2.0 1999/04/29 14:48:00 sdowd Exp $
 #
 # Description:  POP3Client module - acts as interface to POP3 server
-# Author:       Sean Dowd <dowd@home.com>
+# Author:       Sean Dowd <dowd@home.com> or <sdowd@arcmail.com>
 #
-# Copyright (c) 1995,1996 Electonic Data Systems, Inc.  All rights reserved.
+# Copyright (c) 1999  Sean Dowd.  All rights reserved.
 # This module is free software; you can redistribute it and/or modify
 # it under the same terms as Perl itself.
 #
@@ -12,231 +12,113 @@
 
 package Mail::POP3Client;
 
-=head1 NAME
-
-Mail::POP3Client - Perl 5 module to talk to a POP3 (RFC1939) server
-
-=head1 SYNOPSIS
-
-use Mail::POP3Client;
-
-=head1 DESCRIPTION
-
-This module implements an Object-Oriented interface to a POP3 server.
-It is based on RFC1939.  Version 1.19 adds some unofficial support for APOP.
-
-=head1 USAGE
-
-Here is a simple example to list out the headers in your remote mailbox:
-
-  #!/usr/local/bin/perl
-  
-  use Mail::POP3Client;
-  
-  $pop = new Mail::POP3Client("me", "mypassword", "pop3.do.main");
-  for ($i = 1; $i <= $pop->Count; $i++) {
-  	print $pop->Head($i), "\n";
-  }
-
-=head2 POP3Client Commands
-
-These commands are intended to make writing a POP3 client easier.
-They do not necessarily map directly to POP3 commands defined in
-RFC1081.  Some commands return multiple lines as an array in an array
-context, but there may be missing places.
-
-=over 10
-
-=item I<new>
-
-Construct a new POP3 connection with this.  You should give it at
-least 2 arguments: username and password.  The next 2 optional
-arguments are the POP3 host and port number.  A final fifth argument
-of a positive integer enables debugging on the object (to STDERR).
-
-=item I<Head>
-
-Get the headers of the specified message.  Here is a simple Biff
-program:
-
-  #!/usr/local/bin/perl
-  
-  use Mail::POP3Client;
-  
-  $pop = new Mail::POP3Client("me", "mypass", "pop3.do.main");
-  for ($i = 1; $i <= $pop->Count; $i++) {
-  	foreach ($pop->Head($i)) {
-  		/^(From|Subject): / and print $_, "\n";
-  	}
-  	print "\n";
-  }
-
-You can also specify a number of preview lines which will be returned
-with the headers.  This may not be supported by all POP3 server
-implementations as it is marked as optional in the RFC.  Submitted by
-Dennis Moroney <dennis@hub.iwl.net>.
-
-=item I<Body>
-
-Get the body of the specified message.
-
-=item I<HeadAndBody>
-
-Get the head and body of the specified message.
-
-=item I<Retrieve>
-
-Same as HeadAndBody.
-
-=item I<Delete>
-
-Mark the specified message number as DELETED.  Becomes effective upon
-QUIT.  Can be reset with a Reset message.
-
-=item I<Connect>
-
-Start the connection to the POP3 server.  You can pass in the host and
-port.
-
-=item I<Close>
-
-Close the connection gracefully.  POP3 says this will perform any
-pending deletes on the server.
-
-=item I<Alive>
-
-Return true or false on whether the connection is active.
-
-=item I<Socket>
-
-Return the file descriptor for the socket.
-
-=item I<Size>
-
-Set/Return the size of the remote mailbox.  Set by POPStat.
-
-=item I<Count>
-
-Set/Return the number of remote messages.  Set during Login.
-
-=item I<Message>
-
-The last status message received from the server.
-
-=item I<State>
-
-The internal state of the connection: DEAD, AUTHORIZATION, TRANSACTION.
-
-=item I<POPStat>
-
-Return the results of a POP3 STAT command.  Sets the size of the
-mailbox.
-
-=item I<List>
-
-Return a list of sizes of each message.
-
-=item I<Last>
-
-Return the number of the last message, retrieved from the server.
-
-=item I<Reset>
-
-Tell the server to unmark any message marked for deletion.
-
-=item I<User>
-
-Set/Return the current user name.
-
-=item I<Pass>
-
-Set/Return the current user name.
-
-=item I<Login>
-
-Attempt to login to the server connection.
-
-=item I<Host>
-
-Set/Return the current host.
-
-=item I<Port>
-
-Set/Return the current port number.
-
-=head1 AUTHOR
-
-Sean Dowd <dowd@home.com>
-
-=head1 COPYRIGHT
-
-Copyright (c) 1995,1996 Electonic Data Systems, Inc.  All rights reserved.
-This module is free software; you can redistribute it and/or modify
-it under the same terms as Perl itself.
-
-=head1 CREDITS
-
-Based loosely on News::NNTPClient by Rodger Anderson
-<rodger@boi.hp.com>.
-
-=cut
-
-#******************************************************************************
-#* Other packages, globals, etc.
-#******************************************************************************
-
-require 5.000;
-
+use strict;
 use Carp;
-use Socket qw(PF_INET SOCK_STREAM AF_INET);
+use IO::Socket;
 
-$sockaddr = 'S n a4 x8';      # shouldn't this be in Socket.pm?
-$fhcnt = 0;                   # for creating unique filehandles
+use vars qw($VERSION @ISA @EXPORT @EXPORT_OK);
 
-$ID =q( $Id: POP3Client.pm,v 1.23 1999/04/16 17:51:53 sdowd Exp $ );
-$VERSION = substr q$Revision: 1.23 $, 10;
+require Exporter;
 
+@ISA = qw(Exporter AutoLoader);
+# Items to export into callers namespace by default. Note: do not export
+# names by default without a very good reason. Use EXPORT_OK instead.
+# Do not simply export all your public functions/methods/constants.
+@EXPORT = qw(
+	
+);
+
+my $ID =q( $Id: POP3Client.pm,v 2.0 1999/04/29 14:48:00 sdowd Exp $ );
+$VERSION = substr q$Revision: 2.0 $, 10;
+
+
+# Preloaded methods go here.
 
 #******************************************************************************
 #* constructor
+#* new Mail::POP3Client( USER => user,
+#*                       PASSWORD => pass,
+#*                       HOST => host,
+#*                       AUTH_MODE => [APOP|PASS],
+#*                       TIMEOUT => 30,
+#*                       DEBUG => 1 );
+#* OR (deprecated)
+#* new Mail::POP3Client( user, pass, host [, port, debug, auth_mode])
 #******************************************************************************
 sub new
 {
-  my $name = shift;
-  my $user = shift;
-  my $pass = shift;
-  my $host = shift || "pop";
-  my $port = shift || getservbyname("pop3", "tcp") || 110;
-  my $debug = shift || 0;
-  my $auth_mode= shift || 'PASS';
-  
-  my $me = bless {
-		  DEBUG => $debug,
-		  SOCK => $name . "::SOCK" . $fhcnt++,
-		  SERVER => $host,
-		  PORT => $port,
-		  USER => $user,
-		  PASS => $pass,
-		  COUNT => -1,
-		  SIZE => -1,
-		  ADDR => "",
-		  STATE => 'DEAD',
-		  MESG => 'OK',
-		  BANNER => '',
-		  MESG_ID => '',
-		  AUTH_MODE => $auth_mode,
-		  EOL => "\015\012",
-		 }, $name;
-  
-  if ($me->User($user) and $me->Pass($pass) and 
-      $me->Host($host) and $me->Port($port)) {
-    $me->Connect();
-  }
-  
-  $me;
-  
-} # end new
+  my $classname = shift;
+  my $self = {
+	      DEBUG => 0,
+	      SERVER => "pop3",
+	      PORT => 110,
+	      COUNT => -1,
+	      SIZE => -1,
+	      ADDR => "",
+	      STATE => 'DEAD',
+	      MESG => 'OK',
+	      BANNER => '',
+	      MESG_ID => '',
+	      AUTH_MODE => "PASS",
+	      EOL => "\015\012",
+	      TIMEOUT => 60,
+	     };
+  bless( $self, $classname );
+  $self->_init( @_ );
 
+  if ( $self->User() && $self->Pass() )
+    {
+      $self->Connect();
+    }
+
+  return $self;
+}
+
+
+
+#******************************************************************************
+#* initialize - check for old-style params
+#******************************************************************************
+sub _init {
+  my $self = shift;
+
+  # if it looks like a hash
+  if ( @_ && (scalar( @_ ) % 2 == 0) )
+    {
+      # ... and smells like a hash...
+      my %hashargs = @_;
+      if ( ( defined($hashargs{USER}) &&
+	     defined($hashargs{PASSWORD}) ) ||
+	   defined($hashargs{HOST})
+	 )
+	{
+	  # ... then it must be a hash!  Push all values into my internal hash.
+	  foreach my $key ( keys %hashargs )
+	    {
+	      $self->{$key} = $hashargs{$key};
+	    }
+	}
+      else {$self->_initOldStyle( @_ );}
+    }
+  else {$self->_initOldStyle( @_ );}
+}
+
+#******************************************************************************
+#* initialize using the old positional parameter style new - deprecated
+#******************************************************************************
+sub _initOldStyle {
+  my $self = shift;
+  $self->User( shift );
+  $self->Pass( shift );
+  my $host = shift;
+  $host && $self->Host( $host );
+  my $port = shift;
+  $port && $self->Port( $port );
+  my $debug = shift;
+  $debug && $self->Debug( $debug );
+  my $auth_mode = shift;
+  $auth_mode && ($self->{AUTH_MODE} = $auth_mode);
+}
 
 #******************************************************************************
 #* Is the socket alive?
@@ -304,28 +186,16 @@ sub Port
 
 
 #******************************************************************************
-#* set/query the host
+#* set the host
 #******************************************************************************
 sub Host
 {
   my $me = shift;
   my $host = shift or return $me->{HOST};
-  
-  # Get address.
-  if ($host =~ /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/) {
-    $addr = pack('C4', $1, $2, $3, $4);
-  } else {
-    $addr = gethostbyname ($host) or
-      $me->Message("Could not gethostybyname: $host, $!") and return;
-  }
-  
-  # Get fully qualified domain name
-  my $tmp = gethostbyaddr ($addr, AF_INET) or
-    $me->Message("Could not gethostbyaddr: $host, $!") and return;
-  
-  $me->{ADDR} = $addr;
-  $me->{HOST} = $tmp;
-  1;
+
+  $me->{INTERNET_ADDR} = inet_aton( $host ) or
+    $me->Message( "Could not inet_aton: $host, $!") and return;
+  $me->{HOST} = $host;
 } # end host
 
 
@@ -334,7 +204,7 @@ sub Host
 #******************************************************************************
 sub Socket {
   my $me = shift;
-  return $me->{'SOCK'};
+  return $me->{'SOCKET'};
 }
 
 
@@ -356,8 +226,8 @@ sub User
 sub Pass
 {
   my $me = shift;
-  my $pass = shift or return $me->{PASS};
-  $me->{PASS} = $pass;
+  my $pass = shift or return $me->{PASSWORD};
+  $me->{PASSWORD} = $pass;
   
 } # end Pass
 
@@ -410,10 +280,10 @@ sub Close
 {
   my $me = shift;
   if ($me->Alive()) {
-    $s = $me->{SOCK};
+    my $s = $me->Socket();
     print $s "QUIT", $me->EOL;
-    shutdown($me->{SOCK}, 2) or $me->Message("shutdown failed: $!") and return 0;
-    close $me->{SOCK};
+    close( $me->Socket() ) or $me->Message("close failed: $!") and return 0;
+#     shutdown($me->{SOCKET}, 2) or $me->Message("shutdown failed: $!") and return 0;
     $me->State('DEAD');
   }
   1;
@@ -439,30 +309,30 @@ sub Connect
   
   $host and $me->Host($host);
   $port and $me->Port($port);
-  
-  my $s = $me->{SOCK};
-  if (defined fileno $s) {
-    # close and reopen...
-    $me->Close;
-  }
-  
-  socket($s, PF_INET, SOCK_STREAM, getprotobyname("tcp") || 6) or
-    $me->Message("could not open socket: $!") and
-      return 0;
-  connect($s, pack($sockaddr, AF_INET, $me->{PORT}, $me->{ADDR}) ) or
-    $me->Message("could not connect socket [$me->{HOST}, $me->{PORT}]: $!") and
-      return 0;
+
+  $me->Close();
+
+  my $s = IO::Socket::INET->new( PeerAddr  => $me->Host(),
+				 PeerPort  => $me->Port(),
+				 Proto     => "tcp",
+				 Type      => SOCK_STREAM,
+				 Timeout   => $me->{TIMEOUT} )
+    or 
+      $me->Message( "could not connect socket [$me->{HOST}, $me->{PORT}]: $!" )
+	and
+	  return 0;
+  $me->{SOCKET} = $s;
   
   select((select($s) , $| = 1)[0]);  # autoflush
   
-  defined($msg = <$s>) or $me->Message("Could not read") and return 0;
+  defined(my $msg = <$s>) or $me->Message("Could not read") and return 0;
   chomp $msg;
   $me->{BANNER}= $msg;
   $me->{MESG_ID}= $1 if ($msg =~ /(<[\w\d\-\.]+\@[\w\d\-\.]+>)/);
   $me->Message($msg);
   $me->State('AUTHORIZATION');
   
-  $me->User and $me->Pass and $me->Login;
+  $me->User() and $me->Pass() and $me->Login();
   
 } # end Connect
 
@@ -475,8 +345,8 @@ sub Connect
 sub Login
 {
   my $me= shift;
-  if ($me->{AUTH_MODE} eq 'APOP' && $me->{MESG_ID}) { $me->Login_APOP; }
-  else { $me->Login_Pass; }
+  if ($me->{AUTH_MODE} eq 'APOP' && $me->{MESG_ID}) { $me->Login_APOP(); }
+  else { $me->Login_Pass(); }
 }
 
 
@@ -488,16 +358,15 @@ sub Login_APOP
   require MD5;
   
   my $me = shift;
-  my $s = $me->{SOCK};
+  my $s = $me->Socket();
   my $hash= MD5->hexhash ($me->{MESG_ID} . $me->Pass);
   
   print $s "APOP " , $me->User , ' ', $hash, $me->EOL;
   my $line = <$s>;
   chomp $line;
   $me->Message($line);
-  $line =~ /^\+/ or $me->Message("APOP failed: $line") and $me->State('AUTHORIZATION')
+  $line =~ /^\+OK/ or $me->Message("APOP failed: $line") and $me->State('AUTHORIZATION')
     and return 0;
-  $line =~ /^\+OK \S+ has (\d+) /i and $me->Count($1);
   $me->State('TRANSACTION');
   
   $me->POPStat() or return 0;
@@ -510,24 +379,23 @@ sub Login_APOP
 sub Login_Pass
 {
   my $me = shift;
-  my $s = $me->{SOCK};
-  print $s "USER " , $me->User , $me->EOL;
+  my $s = $me->Socket();
+  print $s "USER " , $me->User() , $me->EOL;
   my $line = <$s>;
   chomp $line;
   $me->Message($line);
   $line =~ /^\+/ or $me->Message("USER failed: $line") and $me->State('AUTHORIZATION')
     and return 0;
   
-  print $s "PASS " , $me->Pass , $me->EOL;
+  print $s "PASS " , $me->Pass() , $me->EOL;
   $line = <$s>;
   chomp $line;
   $me->Message($line);
-  $line =~ /^\+/ or $me->Message("PASS failed: $line") and $me->State('AUTHORIZATION')
+  $line =~ /^\+OK/ or $me->Message("PASS failed: $line") and $me->State('AUTHORIZATION')
     and return 0;
-  $line =~ /^\+OK \S+ has (\d+) /i and $me->Count($1);
   
   $me->State('TRANSACTION');
-  
+
   $me->POPStat() or return 0;
   
 } # end Login
@@ -546,15 +414,15 @@ sub Head
   $lines ||= 0;
   $lines =~ /\d+/ || ($lines = 0);
   my $header = '';
-  my $s = $me->{SOCK};
+  my $s = $me->Socket();
   
-  $me->Debug and carp "POP3: TOP $num $lines\n";
+  $me->Debug() and carp "POP3: TOP $num $lines\n";
   print $s "TOP $num $lines", $me->EOL;
   my $line = <$s>;
-  $me->Debug and carp "POP3: $line";
+  $me->Debug() and carp "POP3: $line";
   chomp $line;
   $line =~ /^\+OK/ or $me->Message("Bad return from TOP: $line") and return '';
-  $line =~ /^\+OK (\d+) / and $buflen = $1;
+  $line =~ /^\+OK (\d+) / and my $buflen = $1;
   
   do {
     $line = <$s>;
@@ -574,15 +442,15 @@ sub HeadAndBody
   my $me = shift;
   my $num = shift;
   my $mandb = '';
-  my $s = $me->{SOCK};
+  my $s = $me->Socket();
   
-  $me->Debug and carp "POP3: RETR $num\n";
+  $me->Debug() and carp "POP3: RETR $num\n";
   print $s "RETR $num", $me->EOL;
   my $line = <$s>;
-  $me->Debug and carp "POP3: $line";
+  $me->Debug() and carp "POP3: $line";
   chomp $line;
   $line =~ /^\+OK/ or $me->Message("Bad return from RETR: $line") and return '';
-  $line =~ /^\+OK (\d+) / and $buflen = $1;
+  $line =~ /^\+OK (\d+) / and my $buflen = $1;
   
   do {
     $line = <$s>;
@@ -602,15 +470,15 @@ sub Body
   my $me = shift;
   my $num = shift;
   my $body = '';
-  my $s = $me->{SOCK};
+  my $s = $me->Socket();
   
-  $me->Debug and carp "POP3: RETR $num\n";
+  $me->Debug() and carp "POP3: RETR $num\n";
   print $s "RETR $num", $me->EOL;
   my $line = <$s>;
-  $me->Debug and carp "POP3: $line";
+  $me->Debug() and carp "POP3: $line";
   chomp $line;
   $line =~ /^\+OK/ or $me->Message("Bad return from RETR: $line") and return '';
-  $line =~ /^\+OK (\d+) / and $buflen = $1;
+  $line =~ /^\+OK (\d+) / and my $buflen = $1;
   
   # skip the header
   do {
@@ -628,16 +496,16 @@ sub Body
 
 
 #******************************************************************************
-#* handle a STAT command
+#* handle a STAT command - returns the number of messages in the box
 #******************************************************************************
 sub POPStat {
   my $me = shift;
-  my $s = $me->Socket;
+  my $s = $me->Socket();
   
-  $me->Debug and carp "POP3: POPStat";
+  $me->Debug() and carp "POP3: POPStat";
   print $s "STAT", $me->EOL;
   my $line = <$s>;
-  $line =~ /^\+OK/ or $me->Message("STAT failed: $line") and return 0;
+  $line =~ /^\+OK/ or $me->Message("STAT failed: $line") and return -1;
   $line =~ /^\+OK (\d+) (\d+)/ and $me->Count($1), $me->Size($2);
   
   return $me->Count();
@@ -653,13 +521,13 @@ sub List {
   my $CMD = shift || 'LIST';
   $CMD=~ tr/a-z/A-Z/;
   
-  my $s = $me->Socket;
+  my $s = $me->Socket();
   $me->Alive() or return;
   
   my @retarray = ();
   my $ret = '';
   
-  $me->Debug and carp "POP3: $CMD $num";
+  $me->Debug() and carp "POP3: $CMD $num";
   print $s "$CMD $num", $me->EOL;
   my $line = <$s>;
   $line =~ /^\+OK/ or $me->Message("$line") and return;
@@ -693,9 +561,9 @@ sub Retrieve {
 sub Last {
   my $me = shift;
   
-  my $s = $me->Socket;
+  my $s = $me->Socket();
   
-  $me->Debug and carp "POP3: LAST (obsolete)";
+  $me->Debug() and carp "POP3: LAST (obsolete)";
   print $s "LAST", $me->EOL;
   my $line = <$s>;
   
@@ -709,8 +577,8 @@ sub Last {
 sub Reset {
   my $me = shift;
   
-  my $s = $me->Socket;
-  $me->Debug and carp "POP3: RSET";
+  my $s = $me->Socket();
+  $me->Debug() and carp "POP3: RSET";
   print $s "RSET", $me->EOL;
   my $line = <$s>;
   $line =~ /\+OK .*$/ and return 1;
@@ -725,8 +593,8 @@ sub Delete {
   my $me = shift;
   my $num = shift || return;
   
-  my $s = $me->Socket;
-  $me->Debug and carp "POP3: DELE $num";
+  my $s = $me->Socket();
+  $me->Debug() and carp "POP3: DELE $num";
   print $s "DELE $num",  $me->EOL;
   my $line = <$s>;
   $me->Message($line);
@@ -742,13 +610,13 @@ sub Uidl {
   my $me = shift;
   my $num = shift || '';
   
-  my $s = $me->Socket;
+  my $s = $me->Socket();
   $me->Alive() or return;
   
   my @retarray = ();
   my $ret = '';
   
-  $me->Debug and carp "POP3: UIDL $num";
+  $me->Debug() and carp "POP3: UIDL $num";
   print $s "UIDL $num", $me->EOL;
   my $line = <$s>;
   $line =~ /^\+OK/ or $me->Message($line) and return;
@@ -771,5 +639,266 @@ sub Uidl {
 
 # end package Mail::POP3Client
 
-1;
+# Autoload methods go after =cut, and are processed by the autosplit program.
 
+1;
+__END__
+
+
+
+################################################################################
+# POD Documentation (perldoc Mail::POP3Client or pod2html this_file)
+################################################################################
+
+=head1 NAME
+
+Mail::POP3Client - Perl 5 module to talk to a POP3 (RFC1939) server
+
+=head1 SYNOPSIS
+
+  use Mail::POP3Client;
+  $pop = new Mail::POP3Client( USER     => "me",
+			       PASSWORD => "mypassword",
+			       HOST     => "pop3.do.main" );
+  for( $i = 1; $i <= $pop->Count(); $i++ ) {
+    foreach( $pop->Head() ) {
+      /^(From|Subject):\s+/i && print $_, "\n";
+    }
+  }
+  $pop->Close();
+  # OR
+  $pop2 = new Mail::POP3Client( HOST  => "pop3.otherdo.main" );
+  $pop2->User( "somebody" );
+  $pop2->Pass( "doublesecret" );
+  $pop2->Connect() || die $pop2->Message();
+  $pop2->Close();
+
+=head1 DESCRIPTION
+
+This module implements an Object-Oriented interface to a POP3 server.
+It implements RFC1939 (http://www.faqs.org/rfcs/rfc1939.html)
+
+=head1 EXAMPLES
+
+Here is a simple example to list out the From: and Subject: headers in
+your remote mailbox:
+
+  #!/usr/local/bin/perl
+  
+  use Mail::POP3Client;
+  
+  $pop = new Mail::POP3Client( USER     => "me",
+			       PASSWORD => "mypassword",
+			       HOST     => "pop3.do.main" );
+  for ($i = 1; $i <= $pop->Count(); $i++) {
+    foreach ( $pop->Head( $i ) ) {
+      /^(From|Subject):\s+/i and print $_, "\n";
+    }
+    print "\n";
+  }
+
+=head1 CONSTRUCTORS
+
+Old style (deprecated):
+   new Mail::POP3Client( USER, PASSWORD [, HOST, PORT, DEBUG, AUTH_MODE] );
+
+New style (shown with defaults):
+   new Mail::POP3Client( USER      => "",
+                         PASSWORD  => "",
+                         HOST      => "pop3",
+                         PORT      => 110,
+                         AUTH_MODE => 'PASS',
+                         DEBUG     => 0,
+                         TIMEOUT   => 60,
+                       );
+
+=over 4
+
+=item *
+USER is the userID of the account on the POP server
+
+=item *
+PASSWORD is the cleartext password for the userID
+
+=item *
+HOST is the POP server name or IP address (default = 'pop3')
+
+=item *
+PORT is the POP server port (default = 110)
+
+=item *
+DEBUG - any non-null, non-zero value turns on debugging (default = 0)
+
+=item *
+AUTH_MODE - pass 'APOP' to attempt APOP (MD5) authorization. (default is 'PASS')
+
+=item *
+TIMEOUT - set a timeout value for socket operations (default = 60)
+
+=back
+
+=head1 METHODS
+
+These commands are intended to make writing a POP3 client easier.
+They do not necessarily map directly to POP3 commands defined in
+RFC1081 or RFC1939, although all commands should be supported.  Some
+commands return multiple lines as an array in an array context.
+
+=over 8
+
+=item I<new>( USER => 'user', PASSWORD => 'password', HOST => 'host',
+              PORT => 110, DEBUG => 0, AUTH_MODE => 'PASS', TIMEOUT => 60 )
+
+Construct a new POP3 connection with this.  You should use the
+hash-style constructor.  B<The old positional constructor is
+deprecated and will be removed in a future release.  It is strongly
+recommended that you convert your code to the new version.>
+
+You should give it at least 2 arguments: USER and PASSWORD.  The
+default HOST is 'pop3' which may or may not work for you.  You can
+specify a different PORT (be careful here).
+
+new will attempt to Connect to and Login to the POP3 server if you
+supply a USER and PASSWORD.  If you do not supply them in the
+constructor, you will need to call Connect yourself.
+
+The valid values for AUTH_MODE are 'PASS' and 'APOP'.  APOP implies
+that an MD5 checksum will be used instrad of passing your password in
+cleartext.  However, B<if the server does not support APOP, the
+cleartext method will be used.  Be careful.>
+
+If you enable debugging with DEBUG => 1, messages about command will
+go to STDERR.
+
+Another warning, it's impossible to differentiate between a timeout
+and a failure.
+
+
+=item I<Head>( MESSAGE_NUMBER )
+
+Get the headers of the specified message, either as an array or as a
+string, depending on context.
+
+You can also specify a number of preview lines which will be returned
+with the headers.  This may not be supported by all POP3 server
+implementations as it is marked as optional in the RFC.  Submitted by
+Dennis Moroney <dennis@hub.iwl.net>.
+
+=item I<Body>( MESSAGE_NUMBER )
+
+Get the body of the specified message, either as an array of lines or
+as a string, depending on context.
+
+=item I<HeadAndBody>( MESSAGE_NUMBER [, PREVIEW_LINES ] )
+
+Get the head and body of the specified message, either as an array of
+lines or as a string, depending on context.
+
+=over 4
+
+=item Example
+
+foreach ( $pop->HeadAndBody( 1, 10 ) )
+   print $_, "\n";
+
+prints out a preview of each message, with the full header and the
+first 10 lines of the message (if supported by the POP3 server).
+
+=back
+
+=item I<Retrieve>( MESSAGE_NUMBER )
+
+Same as HeadAndBody.
+
+=item I<Delete>( MESSAGE_NUMBER )
+
+Mark the specified message number as DELETED.  Becomes effective upon
+QUIT.  Can be reset with a Reset message.
+
+=item I<Connect>
+
+Start the connection to the POP3 server.  You can pass in the host and
+port.
+
+=item I<Close>
+
+Close the connection gracefully.  POP3 says this will perform any
+pending deletes on the server.
+
+=item I<Alive>
+
+Return true or false on whether the connection is active.
+
+=item I<Socket>
+
+Return the file descriptor for the socket.
+
+=item I<Size>
+
+Set/Return the size of the remote mailbox.  Set by POPStat.
+
+=item I<Count>
+
+Set/Return the number of remote messages.  Set during Login.
+
+=item I<Message>
+
+The last status message received from the server.
+
+=item I<State>
+
+The internal state of the connection: DEAD, AUTHORIZATION, TRANSACTION.
+
+=item I<POPStat>
+
+Return the results of a POP3 STAT command.  Sets the size of the
+mailbox.
+
+=item I<List>
+
+Return a list of sizes of each message.
+
+=item I<Last>
+
+Return the number of the last message, retrieved from the server.
+
+=item I<Reset>
+
+Tell the server to unmark any message marked for deletion.
+
+=item I<User>( [USER_NAME] )
+
+Set/Return the current user name.
+
+=item I<Pass>( [PASSWORD] )
+
+Set/Return the current user name.
+
+=item I<Login>
+
+Attempt to login to the server connection.
+
+=item I<Host>( [HOSTNAME] )
+
+Set/Return the current host.
+
+=item I<Port>( [PORT_NUMBER] )
+
+Set/Return the current port number.
+
+=back
+
+=head1 AUTHOR
+
+Sean Dowd <dowd@home.com>
+
+=head1 CREDITS
+
+Based loosely on News::NNTPClient by Rodger Anderson
+<rodger@boi.hp.com>.
+
+=head1 SEE ALSO
+
+perl(1).
+
+=cut

@@ -1,0 +1,60 @@
+Revision history for Perl extension Mail::POP3Client.
+
+This is version 2.00 of Mail::POP3Client.  
+
+2.00 1999/04/29 - major rebuild, including:
+	+ changed to hash-style constructor.  See the inline doco.
+	  This will be the only supported constructor in later
+	  versions.
+	+ changed underlying socket code to use IO::Socket.  Timeout
+	  settings on the socket are now supported so you can make
+	  sure that POP accesses do not hang.
+	+ added tests (use POPTESTACCOUNT environment variable to use:
+	  '% POPTESTACCOUNT=userid:password:host make test')
+	+ module passes strict
+	+ you can construct a Mail::POP3Client object which does not
+	  auto-connect (by not passing in a USER and PASSWORD) and
+	  then connect manually
+
+1.23 1999/04/16
+	+ fixed bug in Head when optional number of lines is not passed,
+	  set to zero if undefined or non-numeric (submitted by Bjoern
+	  Kriews <bkr@cut.de>)
+
+1.22 1999/04/15
+	+ change Retrieve to return HeadAndBody.  It was using too
+	  much memory by building both an array and a string to
+	  return.
+
+1.21 1999/04/08
+	+ add SYNOPSIS info for perldoc.
+	+ add support for previewing messages using second integer
+	  argument to Head, as in $pop->Head( 0, 10 ), which would get
+	  the headers and the first 10 lines of the body for message
+	  0.  Contributed by Dennis Moroney <dennis@hub.iwl.net>
+	+ convert prints to carps.
+	+ change local to my.
+
+1.19 198/12/04
+	+ added basic APOP support patches from Gerhard Gonter
+	  <gonter@falbala.wu-wien.ac.at>.  Login does not currently
+	  auto-detect APOP on the server.
+
+1.18 1998/12/04
+	+ fixed typo in Body ($$line = ...)
+	+ remove set of $\
+	+ once again, fix the distribution (this time I built it on a
+	  Unix box.  Thanks to Terry Sigle.)
+
+1.17 1998/11
+	+ fixed newline/carriage return problem in distribution.
+
+1.16 1998/09
+	+ replaced all occurences of chop with chomp.  Should make it
+	  more compatible on machines like the Mac.
+	+ Removed all uses of $_ =.  Uses locally declared variables
+	  now.
+	+ Now compiles with no warnings.
+
+
+
