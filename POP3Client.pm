@@ -1,5 +1,5 @@
 #******************************************************************************
-# $Id: POP3Client.pm,v 1.14 1996/06/05 21:33:29 sdowd Exp $
+# $Id: POP3Client.pm,v 1.15 1996/12/04 14:15:05 sdowd Exp $
 #
 # Description:  POP3Client module - acts as interface to POP3 server
 # Author:       Sean Dowd <ssd@mmts.eds.com>
@@ -183,8 +183,8 @@ use Socket qw(PF_INET SOCK_STREAM AF_INET);
 $sockaddr = 'S n a4 x8';      # shouldn't this be in Socket.pm?
 $fhcnt = 0;                   # for creating unique filehandles
 
-$ID =q( $Id: POP3Client.pm,v 1.14 1996/06/05 21:33:29 sdowd Exp $ );
-$VERSION = substr q$Revision: 1.14 $, 10;
+$ID =q( $Id: POP3Client.pm,v 1.15 1996/12/04 14:15:05 sdowd Exp $ );
+$VERSION = substr q$Revision: 1.15 $, 10;
 
 #******************************************************************************
 #* constructor
@@ -485,7 +485,7 @@ sub Head
 		/^\s*$|^\.\s*$/ or $header .= $_;
 	} until /^\.\s*$/;
 
-	return wantarray ? split(/[\n\r]+/, $header) : $header;
+	return wantarray ? split(/\r?\n/, $header) : $header;
 } # end Head
 
 #******************************************************************************
@@ -511,7 +511,7 @@ sub HeadAndBody
 		/^\.\s*$/ or $mandb .= $_;
 	} until /^\.\s*$/;
 
-	return wantarray ? split(/[\n\r]+/, $mandb) : $mandb;
+	return wantarray ? split(/\r?\n/, $mandb) : $mandb;
 
 } # end HeadAndBody
 
@@ -543,7 +543,7 @@ sub Body
 		/^\.\s*$/ or $body .= $_;
 	} until /^\.\s*$/;
 
-	return wantarray ? split(/[\r\n]+/, $body) : $body;
+	return wantarray ? split(/\r?\n/, $body) : $body;
    
 } # end Body
 
