@@ -12,7 +12,12 @@ To install Mail::POP3Client:
 Written by Sean Dowd <ssd@ticnet.com>.
 
 
-This is version 1.18 of Mail::POP3Client.  
+This is version 1.19 of Mail::POP3Client.  
+
+Changes from version 1.18 to 1.19:
+	+ added basic APOP support patches from Gerhard Gonter
+	  <gonter@falbala.wu-wien.ac.at>.  Login does not currently
+	  auto-detect APOP on the server.
 
 Changes from version 1.17 to 1.18:
 	+ fixed typo in Body ($$line = ...)

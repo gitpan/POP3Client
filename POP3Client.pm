@@ -1,5 +1,5 @@
 #******************************************************************************
-# $Id: POP3Client.pm,v 1.18 1998/10/01 08:15:05 ssd Exp $
+# $Id: POP3Client.pm,v 1.19 1998/12/04 16:26:57 sdowd Exp $
 #
 # Description:  POP3Client module - acts as interface to POP3 server
 # Author:       Sean Dowd <ssd@ticnet.com>
@@ -19,7 +19,7 @@ Mail::POP3Client - Perl 5 module to talk to a POP3 (RFC1081) server
 =head1 DESCRIPTION
 
 This module implements an Object-Oriented interface to a POP3 server.
-It is based on RFC1081.
+It is based on RFC1939.  Version 1.19 adds some unofficial support for APOP.
 
 =head1 USAGE
 
@@ -184,50 +184,54 @@ use Socket qw(PF_INET SOCK_STREAM AF_INET);
 $sockaddr = 'S n a4 x8';      # shouldn't this be in Socket.pm?
 $fhcnt = 0;                   # for creating unique filehandles
 
-$ID =q( $Id: POP3Client.pm,v 1.18 1998/10/01 08:15:05 ssd Exp $ );
-$VERSION = substr q$Revision: 1.18 $, 10;
+$ID =q( $Id: POP3Client.pm,v 1.19 1998/12/04 16:26:57 sdowd Exp $ );
+$VERSION = substr q$Revision: 1.19 $, 10;
 
 #******************************************************************************
 #* constructor
 #******************************************************************************
 sub new
 {
-	my $name = shift;
-	my $user = shift;
-	my $pass = shift;
-	my $host = shift || "pop";
-	my $port = shift || getservbyname("pop3", "tcp") || 110;
-	my $debug = shift || 0;
-
-    my $me = bless {
-		DEBUG => $debug,
-		SOCK => $name . "::SOCK" . $fhcnt++,
-		SERVER => $host,
-		PORT => $port,
-		USER => $user,
-		PASS => $pass,
-		COUNT => -1,
-		SIZE => -1,
-		ADDR => "",
-		STATE => 'DEAD',
-		MESG => 'OK',
-		EOL => "\015\012",
-	}, $name;
-
-	if ($me->User($user) and $me->Pass($pass) and 
-		$me->Host($host) and $me->Port($port)) {
-		$me->Connect();
-	}
-
-	$me;
-
+  my $name = shift;
+  my $user = shift;
+  my $pass = shift;
+  my $host = shift || "pop";
+  my $port = shift || getservbyname("pop3", "tcp") || 110;
+  my $debug = shift || 0;
+  my $auth_mode= shift || 'PASS';
+  
+  my $me = bless {
+		  DEBUG => $debug,
+		  SOCK => $name . "::SOCK" . $fhcnt++,
+		  SERVER => $host,
+		  PORT => $port,
+		  USER => $user,
+		  PASS => $pass,
+		  COUNT => -1,
+		  SIZE => -1,
+		  ADDR => "",
+		  STATE => 'DEAD',
+		  MESG => 'OK',
+		  BANNER => '',
+		  MESG_ID => '',
+		  AUTH_MODE => $auth_mode,
+		  EOL => "\015\012",
+		 }, $name;
+  
+  if ($me->User($user) and $me->Pass($pass) and 
+      $me->Host($host) and $me->Port($port)) {
+    $me->Connect();
+  }
+  
+  $me;
+  
 } # end new
 
 #******************************************************************************
 #* Is the socket alive?
 #******************************************************************************
 sub Version {
-	return $VERSION;
+  return $VERSION;
 }
 
 #******************************************************************************
@@ -235,8 +239,8 @@ sub Version {
 #******************************************************************************
 sub Alive
 {
-    my $me = shift;
-	$me->State =~ /^AUTHORIZATION$|^TRANSACTION$/i;
+  my $me = shift;
+  $me->State =~ /^AUTHORIZATION$|^TRANSACTION$/i;
 } # end Alive
 
 #******************************************************************************
@@ -244,9 +248,9 @@ sub Alive
 #******************************************************************************
 sub State
 {
-    my $me = shift;
-	my $stat = shift or return $me->{STATE};
-	$me->{STATE} = $stat;
+  my $me = shift;
+  my $stat = shift or return $me->{STATE};
+  $me->{STATE} = $stat;
 } # end Stat
 
 #******************************************************************************
@@ -254,9 +258,9 @@ sub State
 #******************************************************************************
 sub Message
 {
-    my $me = shift;
-	my $msg = shift or return $me->{MESG};
-	$me->{MESG} = $msg;
+  my $me = shift;
+  my $msg = shift or return $me->{MESG};
+  $me->{MESG} = $msg;
 } # end Message
 
 #******************************************************************************
@@ -264,10 +268,10 @@ sub Message
 #******************************************************************************
 sub Debug
 {
-    my $me = shift;
-	my $debug = shift or return $me->{DEBUG};
-	$me->{DEBUG} = $debug;
-    
+  my $me = shift;
+  my $debug = shift or return $me->{DEBUG};
+  $me->{DEBUG} = $debug;
+  
 } # end Debug
 
 #******************************************************************************
@@ -275,10 +279,10 @@ sub Debug
 #******************************************************************************
 sub Port
 {
-    my $me = shift;
-	my $port = shift or return $me->{PORT};
-
-	$me->{PORT} = $port;
+  my $me = shift;
+  my $port = shift or return $me->{PORT};
+  
+  $me->{PORT} = $port;
 
 } # end port
 
@@ -287,32 +291,32 @@ sub Port
 #******************************************************************************
 sub Host
 {
-    my $me = shift;
-	my $host = shift or return $me->{HOST};
-
-    # Get address.
-	if ($host =~ /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/) {
-		$addr = pack('C4', $1, $2, $3, $4);
-    } else {
-		$addr = gethostbyname ($host) or
-			$me->Message("Could not gethostybyname: $host, $!") and return;
-	}
-
-    # Get fully qualified domain name
-    my $tmp = gethostbyaddr ($addr, AF_INET) or
-		$me->Message("Could not gethostbyaddr: $host, $!") and return;
-
-    $me->{ADDR} = $addr;
-    $me->{HOST} = $tmp;
-	1;
+  my $me = shift;
+  my $host = shift or return $me->{HOST};
+  
+  # Get address.
+  if ($host =~ /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/) {
+    $addr = pack('C4', $1, $2, $3, $4);
+  } else {
+    $addr = gethostbyname ($host) or
+      $me->Message("Could not gethostybyname: $host, $!") and return;
+  }
+  
+  # Get fully qualified domain name
+  my $tmp = gethostbyaddr ($addr, AF_INET) or
+    $me->Message("Could not gethostbyaddr: $host, $!") and return;
+  
+  $me->{ADDR} = $addr;
+  $me->{HOST} = $tmp;
+  1;
 } # end host
 
 #******************************************************************************
 #* query the socket to use as a file handle
 #******************************************************************************
 sub Socket {
-	my $me = shift;
-	return $me->{'SOCK'};
+  my $me = shift;
+  return $me->{'SOCK'};
 }
 
 #******************************************************************************
@@ -320,10 +324,10 @@ sub Socket {
 #******************************************************************************
 sub User
 {
-	my $me = shift;
-	my $user = shift or return $me->{USER};
-	$me->{USER} = $user;
-
+  my $me = shift;
+  my $user = shift or return $me->{USER};
+  $me->{USER} = $user;
+  
 } # end User
 
 #******************************************************************************
@@ -331,10 +335,10 @@ sub User
 #******************************************************************************
 sub Pass
 {
-	my $me = shift;
-	my $pass = shift or return $me->{PASS};
-	$me->{PASS} = $pass;
-    
+  my $me = shift;
+  my $pass = shift or return $me->{PASS};
+  $me->{PASS} = $pass;
+  
 } # end Pass
 
 #******************************************************************************
@@ -342,13 +346,13 @@ sub Pass
 #******************************************************************************
 sub Count
 {
-	my $me = shift;
-	my $c = shift;
-	if (defined $c and length($c) > 0) {
-		$me->{COUNT} = $c;
-	} else {
-		return $me->{COUNT};
-	}
+  my $me = shift;
+  my $c = shift;
+  if (defined $c and length($c) > 0) {
+    $me->{COUNT} = $c;
+  } else {
+    return $me->{COUNT};
+  }
     
 } # end Count
 
@@ -357,22 +361,22 @@ sub Count
 #******************************************************************************
 sub Size
 {
-	my $me = shift;
-	my $c = shift;
-	if (defined $c and length($c) > 0) {
-		$me->{SIZE} = $c;
-	} else {
-		return $me->{SIZE};
-	}
-    
+  my $me = shift;
+  my $c = shift;
+  if (defined $c and length($c) > 0) {
+    $me->{SIZE} = $c;
+  } else {
+    return $me->{SIZE};
+  }
+  
 } # end Size
 
 #******************************************************************************
 #* 
 #******************************************************************************
 sub EOL {
-    my $me = shift;
-	return $me->{'EOL'};
+  my $me = shift;
+  return $me->{'EOL'};
 }
 
 #******************************************************************************
@@ -380,15 +384,15 @@ sub EOL {
 #******************************************************************************
 sub Close
 {
-	my $me = shift;
-	if ($me->Alive()) {
-		$s = $me->{SOCK};
-		print $s "QUIT", $me->EOL;
-		shutdown($me->{SOCK}, 2) or $me->Message("shutdown failed: $!") and return 0;
-		close $me->{SOCK};
-		$me->State('DEAD');
-	}
-	1;
+  my $me = shift;
+  if ($me->Alive()) {
+    $s = $me->{SOCK};
+    print $s "QUIT", $me->EOL;
+    shutdown($me->{SOCK}, 2) or $me->Message("shutdown failed: $!") and return 0;
+    close $me->{SOCK};
+    $me->State('DEAD');
+  }
+  1;
 } # end Close
 
 #******************************************************************************
@@ -396,8 +400,8 @@ sub Close
 #******************************************************************************
 sub DESTROY
 {
-    my $me = shift;
-	$me->Close;
+  my $me = shift;
+  $me->Close;
 } # end DESTROY
 
 
@@ -406,33 +410,35 @@ sub DESTROY
 #******************************************************************************
 sub Connect
 {
-	my ($me, $host, $port) = @_;
-
-	$host and $me->Host($host);
-	$port and $me->Port($port);
-
-	my $s = $me->{SOCK};
-	if (defined fileno $s) {
-		# close and reopen...
-		$me->Close;
-	}
-
-	socket($s, PF_INET, SOCK_STREAM, getprotobyname("tcp") || 6) or
-		$me->Message("could not open socket: $!") and
-			return 0;
-	connect($s, pack($sockaddr, AF_INET, $me->{PORT}, $me->{ADDR}) ) or
-		$me->Message("could not connect socket [$me->{HOST}, $me->{PORT}]: $!") and
-			return 0;
-
-	select((select($s) , $| = 1)[0]);  # autoflush
-
-	defined($msg = <$s>) or $me->Message("Could not read") and return 0;
-	chomp $msg;
-	$me->Message($msg);
-	$me->State('AUTHORIZATION');
-
-	$me->User and $me->Pass and $me->Login;
-
+  my ($me, $host, $port) = @_;
+  
+  $host and $me->Host($host);
+  $port and $me->Port($port);
+  
+  my $s = $me->{SOCK};
+  if (defined fileno $s) {
+    # close and reopen...
+    $me->Close;
+  }
+  
+  socket($s, PF_INET, SOCK_STREAM, getprotobyname("tcp") || 6) or
+    $me->Message("could not open socket: $!") and
+      return 0;
+  connect($s, pack($sockaddr, AF_INET, $me->{PORT}, $me->{ADDR}) ) or
+    $me->Message("could not connect socket [$me->{HOST}, $me->{PORT}]: $!") and
+      return 0;
+  
+  select((select($s) , $| = 1)[0]);  # autoflush
+  
+  defined($msg = <$s>) or $me->Message("Could not read") and return 0;
+  chomp $msg;
+  $me->{BANNER}= $msg;
+  $me->{MESG_ID}= $1 if ($msg =~ /(<[\w\d\-\.]+\@[\w\d\-\.]+>)/);
+  $me->Message($msg);
+  $me->State('AUTHORIZATION');
+  
+  $me->User and $me->Pass and $me->Login;
+  
 } # end Connect
 
 #******************************************************************************
@@ -440,27 +446,54 @@ sub Connect
 #******************************************************************************
 sub Login
 {
-	my $me = shift;
-	my $s = $me->{SOCK};
-	print $s "USER " , $me->User , $me->EOL;
-	my $line = <$s>;
-	chomp $line;
-	$me->Message($line);
-	$line =~ /^\+/ or $me->Message("USER failed: $line") and $me->State('AUTHORIZATION')
-		and return 0;
+  my $me= shift;
+  if ($me->{AUTH_MODE} eq 'APOP' && $me->{MESG_ID}) { $me->Login_APOP; }
+  else { $me->Login_Pass; }
+}
 
-	print $s "PASS " , $me->Pass , $me->EOL;
-	$line = <$s>;
-	chomp $line;
-	$me->Message($line);
-	$line =~ /^\+/ or $me->Message("PASS failed: $line") and $me->State('AUTHORIZATION')
-		and return 0;
-	$line =~ /^\+OK \S+ has (\d+) /i and $me->Count($1);
+sub Login_APOP
+{
+  require MD5;
+  
+  my $me = shift;
+  my $s = $me->{SOCK};
+  my $hash= MD5->hexhash ($me->{MESG_ID} . $me->Pass);
+  
+  print $s "APOP " , $me->User , ' ', $hash, $me->EOL;
+  my $line = <$s>;
+  chomp $line;
+  $me->Message($line);
+  $line =~ /^\+/ or $me->Message("APOP failed: $line") and $me->State('AUTHORIZATION')
+    and return 0;
+  $line =~ /^\+OK \S+ has (\d+) /i and $me->Count($1);
+  $me->State('TRANSACTION');
+  
+  $me->POPStat() or return 0;
+}
 
-	$me->State('TRANSACTION');
-
-	$me->POPStat() or return 0;
-
+sub Login_Pass
+{
+  my $me = shift;
+  my $s = $me->{SOCK};
+  print $s "USER " , $me->User , $me->EOL;
+  my $line = <$s>;
+  chomp $line;
+  $me->Message($line);
+  $line =~ /^\+/ or $me->Message("USER failed: $line") and $me->State('AUTHORIZATION')
+    and return 0;
+  
+  print $s "PASS " , $me->Pass , $me->EOL;
+  $line = <$s>;
+  chomp $line;
+  $me->Message($line);
+  $line =~ /^\+/ or $me->Message("PASS failed: $line") and $me->State('AUTHORIZATION')
+    and return 0;
+  $line =~ /^\+OK \S+ has (\d+) /i and $me->Count($1);
+  
+  $me->State('TRANSACTION');
+  
+  $me->POPStat() or return 0;
+  
 } # end Login
 
 #******************************************************************************
@@ -468,24 +501,24 @@ sub Login
 #******************************************************************************
 sub Head
 {
-	my $me = shift;
-	my $num = shift;
-	my $header = '';
-	my $s = $me->{SOCK};
-
-	$me->Debug and print "TOP $num 0\n";
-	print $s "TOP $num 0", $me->EOL;
-	my $line = <$s>;
-	$me->Debug and print $line;
-	chomp $line;
-	$line =~ /^\+OK/ or $me->Message("Bad return from TOP: $line") and return '';
-	$line =~ /^\+OK (\d+) / and $buflen = $1;
-	
-	do {
-		$line = <$s>;
-		$line =~ /^\s*$|^\.\s*$/ or $header .= $line;
-	} until $line =~ /^\.\s*$/;
-
+  my $me = shift;
+  my $num = shift;
+  my $header = '';
+  my $s = $me->{SOCK};
+  
+  $me->Debug and print "TOP $num 0\n";
+  print $s "TOP $num 0", $me->EOL;
+  my $line = <$s>;
+  $me->Debug and print $line;
+  chomp $line;
+  $line =~ /^\+OK/ or $me->Message("Bad return from TOP: $line") and return '';
+  $line =~ /^\+OK (\d+) / and $buflen = $1;
+  
+  do {
+    $line = <$s>;
+    $line =~ /^\s*$|^\.\s*$/ or $header .= $line;
+  } until $line =~ /^\.\s*$/;
+  
 	return wantarray ? split(/\r?\n/, $header) : $header;
 } # end Head
 
@@ -494,26 +527,26 @@ sub Head
 #******************************************************************************
 sub HeadAndBody
 {
-    my $me = shift;
-	my $num = shift;
-	my $mandb = '';
-	my $s = $me->{SOCK};
-
-	$me->Debug and print "RET $num\n";
-	print $s "RETR $num", $me->EOL;
-	my $line = <$s>;
-	$me->Debug and print $line;
-	chomp $line;
-	$line =~ /^\+OK/ or $me->Message("Bad return from RETR: $line") and return '';
-	$line =~ /^\+OK (\d+) / and $buflen = $1;
-	
-	do {
-		$line = <$s>;
-		$line =~ /^\.\s*$/ or $mandb .= $line;
-	} until $line =~ /^\.\s*$/;
-
-	return wantarray ? split(/\r?\n/, $mandb) : $mandb;
-
+  my $me = shift;
+  my $num = shift;
+  my $mandb = '';
+  my $s = $me->{SOCK};
+  
+  $me->Debug and print "RET $num\n";
+  print $s "RETR $num", $me->EOL;
+  my $line = <$s>;
+  $me->Debug and print $line;
+  chomp $line;
+  $line =~ /^\+OK/ or $me->Message("Bad return from RETR: $line") and return '';
+  $line =~ /^\+OK (\d+) / and $buflen = $1;
+  
+  do {
+    $line = <$s>;
+    $line =~ /^\.\s*$/ or $mandb .= $line;
+  } until $line =~ /^\.\s*$/;
+  
+  return wantarray ? split(/\r?\n/, $mandb) : $mandb;
+  
 } # end HeadAndBody
 
 #******************************************************************************
@@ -521,155 +554,157 @@ sub HeadAndBody
 #******************************************************************************
 sub Body
 {
-	my $me = shift;
-	my $num = shift;
-	my $body = '';
-	my $s = $me->{SOCK};
-	
-	$me->Debug and print "RET $num\n";
-	print $s "RETR $num", $me->EOL;
-	my $line = <$s>;
-	$me->Debug and print $line;
-	chomp $line;
-	$line =~ /^\+OK/ or $me->Message("Bad return from RETR: $line") and return '';
-	$line =~ /^\+OK (\d+) / and $buflen = $1;
-	
-	# skip the header
-	do {
-		$line = <$s>;
-	} until $line =~ /^\s*$/;
-
-	do {
-		$line = <$s>;
-		$line =~ /^\.\s*$/ or $body .= $line;
-	} until $line =~ /^\.\s*$/;
-
-	return wantarray ? split(/\r?\n/, $body) : $body;
-   
+  my $me = shift;
+  my $num = shift;
+  my $body = '';
+  my $s = $me->{SOCK};
+  
+  $me->Debug and print "RET $num\n";
+  print $s "RETR $num", $me->EOL;
+  my $line = <$s>;
+  $me->Debug and print $line;
+  chomp $line;
+  $line =~ /^\+OK/ or $me->Message("Bad return from RETR: $line") and return '';
+  $line =~ /^\+OK (\d+) / and $buflen = $1;
+  
+  # skip the header
+  do {
+    $line = <$s>;
+  } until $line =~ /^\s*$/;
+  
+  do {
+    $line = <$s>;
+    $line =~ /^\.\s*$/ or $body .= $line;
+  } until $line =~ /^\.\s*$/;
+  
+  return wantarray ? split(/\r?\n/, $body) : $body;
+  
 } # end Body
 
 #******************************************************************************
 #* handle a STAT command
 #******************************************************************************
 sub POPStat {
-	my $me = shift;
-	my $s = $me->Socket;
-
-	$me->Debug and carp "POP3: POPStat";
-	print $s "STAT", $me->EOL;
-	my $line = <$s>;
-	$line =~ /^\+OK/ or $me->Message("STAT failed: $line") and return 0;
-	$line =~ /^\+OK (\d+) (\d+)/ and $me->Count($1), $me->Size($2);
-
-    return $me->Count();
+  my $me = shift;
+  my $s = $me->Socket;
+  
+  $me->Debug and carp "POP3: POPStat";
+  print $s "STAT", $me->EOL;
+  my $line = <$s>;
+  $line =~ /^\+OK/ or $me->Message("STAT failed: $line") and return 0;
+  $line =~ /^\+OK (\d+) (\d+)/ and $me->Count($1), $me->Size($2);
+  
+  return $me->Count();
 }
 
 #******************************************************************************
 #* issue the LIST command
 #******************************************************************************
 sub List {
-    my $me = shift;
-	my $num = shift || '';
-
-	my $s = $me->Socket;
-	$me->Alive() or return;
-
-	local @retarray = ();
-	local $ret = '';
-
-	$me->Debug and carp "POP3: List $num";
-	print $s "LIST $num", $me->EOL;
-	my $line = <$s>;
-	$line =~ /^\+OK/ or $me->Message("$line") and return;
-	if ($num) {
-		$line =~ s/^\+OK\s*//;
-		return $line;
-	}
-	while( defined( $line = <$s> ) ) {
-		$line =~ /^\.\s*$/ and last;
-		$ret .= $line;
-		chomp $line;
-		push(@retarray, $line);
-	}
-	if ($ret) {
-		return wantarray ? @retarray : $ret;
-	}
+  my $me = shift;
+  my $num = shift || '';
+  my $CMD = shift || 'LIST';
+  $CMD=~ tr/a-z/A-Z/;
+  
+  my $s = $me->Socket;
+  $me->Alive() or return;
+  
+  local @retarray = ();
+  local $ret = '';
+  
+  $me->Debug and carp "POP3: List $num";
+  print $s "$CMD $num", $me->EOL;
+  my $line = <$s>;
+  $line =~ /^\+OK/ or $me->Message("$line") and return;
+  if ($num) {
+    $line =~ s/^\+OK\s*//;
+    return $line;
+  }
+  while( defined( $line = <$s> ) ) {
+    $line =~ /^\.\s*$/ and last;
+    $ret .= $line;
+    chomp $line;
+    push(@retarray, $line);
+  }
+  if ($ret) {
+    return wantarray ? @retarray : $ret;
+  }
 }
 
 #******************************************************************************
 #* retrieve the given message number
 #******************************************************************************
 sub Retrieve {
-    my $me = shift;
-	my $num = shift || return;
-
-	$me->Alive or return;
-
-	my $s = $me->Socket;
-	
-	
-	local @retarray = ();
-	local $ret = '';
-
-	$me->Debug and print STDERR "DEBUG: RETR $num", $me->EOL;
-	print $s "RETR $num", $me->EOL;
-	my $line = <$s>;
-	$line =~ /^\+OK\s*/ or $me->Message($line) and return;
-
-	while( defined( $line = <$s> ) ) {
-		$me->Debug and print STDERR "DEBUG: $line";
-		$line =~ /^\.\s*$/ and last;
-		$ret .= $line;
-		chomp $line;
-		push(@retarray, $line);
-	}
-	if ($ret) {
-		return wantarray ? @retarray : $ret;
-	}
-		
-	return;
+  my $me = shift;
+  my $num = shift || return;
+  
+  $me->Alive or return;
+  
+  my $s = $me->Socket;
+  
+  
+  local @retarray = ();
+  local $ret = '';
+  
+  $me->Debug and print STDERR "DEBUG: RETR $num", $me->EOL;
+  print $s "RETR $num", $me->EOL;
+  my $line = <$s>;
+  $line =~ /^\+OK\s*/ or $me->Message($line) and return;
+  
+  while( defined( $line = <$s> ) ) {
+    $me->Debug and print STDERR "DEBUG: $line";
+    $line =~ /^\.\s*$/ and last;
+    $ret .= $line;
+    chomp $line;
+    push(@retarray, $line);
+  }
+  if ($ret) {
+    return wantarray ? @retarray : $ret;
+  }
+  
+  return;
 }
 
 #******************************************************************************
 #* implement the LAST command - see the rfc (1081)
 #******************************************************************************
 sub Last {
-    my $me = shift;
-	
-	my $s = $me->Socket;
-	
-	print $s "LAST", $me->EOL;
-	my $line = <$s>;
-	
-	$line =~ /\+OK (\d+)\s*$/ and return $1;
+  my $me = shift;
+  
+  my $s = $me->Socket;
+  
+  print $s "LAST", $me->EOL;
+  my $line = <$s>;
+  
+  $line =~ /\+OK (\d+)\s*$/ and return $1;
 }
 
 #******************************************************************************
 #* reset the deletion stat
 #******************************************************************************
 sub Reset {
-    my $me = shift;
-	
-	my $s = $me->Socket;
-	print $s "RSET", $me->EOL;
-	my $line = <$s>;
-	$line =~ /\+OK .*$/ and return 1;
-	return 0;
+  my $me = shift;
+  
+  my $s = $me->Socket;
+  print $s "RSET", $me->EOL;
+  my $line = <$s>;
+  $line =~ /\+OK .*$/ and return 1;
+  return 0;
 }
 
 #******************************************************************************
 #* 
 #******************************************************************************
 sub Delete {
-    my $me = shift;
-	my $num = shift || return;
-
-	my $s = $me->Socket;
-	print $s "DELE $num",  $me->EOL;
-	my $line = <$s>;
-	$me->Message($line);
-	$line =~ /^\+OK / && return 1;
-	return 0;
+  my $me = shift;
+  my $num = shift || return;
+  
+  my $s = $me->Socket;
+  print $s "DELE $num",  $me->EOL;
+  my $line = <$s>;
+  $me->Message($line);
+  $line =~ /^\+OK / && return 1;
+  return 0;
 }
 
 # end package Mail::POP3Client
