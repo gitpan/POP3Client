@@ -7,6 +7,8 @@ Frequently Asked Questions Regarding Mail::POP3Client
 4. How do I tell if the connection worked or not?
 5. My ID and password are correct, why can't I connect?
 6. Can't use an undefined value as a symbol reference [...] during global destruction.
+6. Can't use an undefined value as a symbol reference [...] during global destruction.
+7. How do I use an SSL connection?
 
 
 Answers
@@ -90,3 +92,15 @@ you are using (telnet to port 110 on the server and send me the first
 line it sends you).  Some POP3 servers drop the connection after a failed
 authentication.  The servers I have tested against do not appear to do
 this.
+
+
+7. How do I use an SSL connection?  (Thanks to Jamie LeTual)
+
+my $socket = IO::Socket::SSL->new( PeerAddr => 'pop.host.com',
+				   PeerPort => 993,
+				   Proto    => 'tcp') || die "Ack! No socket!";
+my $pop = Mail::POP3Client->new();
+$pop->User('jamie');
+$pop->Pass('secret');
+$pop->Socket($socket);
+$pop->Connect();
