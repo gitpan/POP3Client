@@ -1,5 +1,5 @@
 #******************************************************************************
-# $Id: POP3Client.pm,v 2.3 1999/10/11 15:38:36 sdowd Exp $
+# $Id: POP3Client.pm,v 2.4 1999/11/20 20:51:28 sdowd Exp $
 #
 # Description:  POP3Client module - acts as interface to POP3 server
 # Author:       Sean Dowd <dowd@home.com> or <sdowd@arcmail.com>
@@ -29,8 +29,8 @@ require Exporter;
 	
 );
 
-my $ID =q( $Id: POP3Client.pm,v 2.3 1999/10/11 15:38:36 sdowd Exp $ );
-$VERSION = substr q$Revision: 2.3 $, 10;
+my $ID =q( $Id: POP3Client.pm,v 2.4 1999/11/20 20:51:28 sdowd Exp $ );
+$VERSION = substr q$Revision: 2.4 $, 10;
 
 
 # Preloaded methods go here.
@@ -454,14 +454,13 @@ sub HeadAndBody
   $line =~ /^\+OK/ or $me->Message("Bad return from RETR: $line") and return;
   $line =~ /^\+OK (\d+) / and my $buflen = $1;
   
-  do {
+  while (1) {
     $line = $me->_sockread();
-    $line =~ /^\.\s*$/ or do {
-      # convert any '..' at the start of a line to '.'
-      $line =~ s/^\.\././;
-      $mandb .= $line;
-    };
-  } until $line =~ /^\.\s*$/;
+    last if $line =~ /^\.\s*$/;
+    # convert any '..' at the start of a line to '.'  
+    $line =~ s/^\.\././;  
+    $mandb .= $line;  
+  } 
   
   return wantarray ? split(/\r?\n/, $mandb) : $mandb;
   
@@ -489,14 +488,13 @@ sub Body
     $line = $me->_sockread();
   } until $line =~ /^\s*$/;
   
-  do {
+  while (1) {
     $line = $me->_sockread();
-    $line =~ /^\.\s*$/ or do {
-      # convert any '..' at the start of a line to '.'
-      $line =~ s/^\.\././;
-      $body .= $line;
-    };
-  } until $line =~ /^\.\s*$/;
+    last if $line =~ /^\.\s*$/;
+    # convert any '..' at the start of a line to '.'  
+    $line =~ s/^\.\././;  
+    $body .= $line;  
+  } 
   
   return wantarray ? split(/\r?\n/, $body) : $body;
   

@@ -1,6 +1,13 @@
 Revision history for Perl extension Mail::POP3Client.
 
-This is version 2.3 of Mail::POP3Client.  
+This is version 2.4 of Mail::POP3Client.
+
+
+2.4  1999/11/20
+	+ fixed problem created by previous fix.  Lines that had only
+	  a . on them were treated as the end of message (since the
+	  test was after stripping the . added by the POP3 server).
+	  Thanks to Christophe Wolfhugel @ oleane.net.
 
 2.3  1999/10/11
 	+ fixed problem where lines beginning with '.' in a mail
