@@ -9,10 +9,29 @@ To install Mail::POP3Client:
 % make install
 
 
-Written by Sean Dowd <ssd@ticnet.com>.
+Written by Sean Dowd <dowd@home.com>.
 
 
-This is version 1.19 of Mail::POP3Client.  
+This is version 1.21 of Mail::POP3Client.  
+
+Changes from version 1.23 to 1.23:
+	+ fixed bug in Head when optional number of lines is not passed,
+	  set to zero if undefined or non-numeric (submitted by Bjoern
+	  Kriews <bkr@cut.de>)
+
+Changes from version 1.21 to 1.22:
+	+ change Retrieve to return HeadAndBody.  It was using too
+	  much memory by building both an array and a string to
+	  return.
+
+Changes from version 1.19 to 1.21:
+	+ add SYNOPSIS info for perldoc.
+	+ add support for previewing messages using second integer
+	  argument to Head, as in $pop->Head( 0, 10 ), which would get
+	  the headers and the first 10 lines of the body for message
+	  0.  Contributed by Dennis Moroney <dennis@hub.iwl.net>
+	+ convert prints to carps.
+	+ change local to my.
 
 Changes from version 1.18 to 1.19:
 	+ added basic APOP support patches from Gerhard Gonter

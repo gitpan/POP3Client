@@ -1,8 +1,8 @@
 #******************************************************************************
-# $Id: POP3Client.pm,v 1.19 1998/12/04 16:26:57 sdowd Exp $
+# $Id: POP3Client.pm,v 1.23 1999/04/16 17:51:53 sdowd Exp $
 #
 # Description:  POP3Client module - acts as interface to POP3 server
-# Author:       Sean Dowd <ssd@ticnet.com>
+# Author:       Sean Dowd <dowd@home.com>
 #
 # Copyright (c) 1995,1996 Electonic Data Systems, Inc.  All rights reserved.
 # This module is free software; you can redistribute it and/or modify
@@ -14,7 +14,11 @@ package Mail::POP3Client;
 
 =head1 NAME
 
-Mail::POP3Client - Perl 5 module to talk to a POP3 (RFC1081) server
+Mail::POP3Client - Perl 5 module to talk to a POP3 (RFC1939) server
+
+=head1 SYNOPSIS
+
+use Mail::POP3Client;
 
 =head1 DESCRIPTION
 
@@ -66,6 +70,11 @@ program:
   	}
   	print "\n";
   }
+
+You can also specify a number of preview lines which will be returned
+with the headers.  This may not be supported by all POP3 server
+implementations as it is marked as optional in the RFC.  Submitted by
+Dennis Moroney <dennis@hub.iwl.net>.
 
 =item I<Body>
 
@@ -157,7 +166,7 @@ Set/Return the current port number.
 
 =head1 AUTHOR
 
-Sean Dowd <ssd@ticnet.com>
+Sean Dowd <dowd@home.com>
 
 =head1 COPYRIGHT
 
@@ -184,8 +193,9 @@ use Socket qw(PF_INET SOCK_STREAM AF_INET);
 $sockaddr = 'S n a4 x8';      # shouldn't this be in Socket.pm?
 $fhcnt = 0;                   # for creating unique filehandles
 
-$ID =q( $Id: POP3Client.pm,v 1.19 1998/12/04 16:26:57 sdowd Exp $ );
-$VERSION = substr q$Revision: 1.19 $, 10;
+$ID =q( $Id: POP3Client.pm,v 1.23 1999/04/16 17:51:53 sdowd Exp $ );
+$VERSION = substr q$Revision: 1.23 $, 10;
+
 
 #******************************************************************************
 #* constructor
@@ -227,12 +237,14 @@ sub new
   
 } # end new
 
+
 #******************************************************************************
 #* Is the socket alive?
 #******************************************************************************
 sub Version {
   return $VERSION;
 }
+
 
 #******************************************************************************
 #* Is the socket alive?
@@ -242,6 +254,7 @@ sub Alive
   my $me = shift;
   $me->State =~ /^AUTHORIZATION$|^TRANSACTION$/i;
 } # end Alive
+
 
 #******************************************************************************
 #* What's the frequency Kenneth?
@@ -253,6 +266,7 @@ sub State
   $me->{STATE} = $stat;
 } # end Stat
 
+
 #******************************************************************************
 #* Got anything to say?
 #******************************************************************************
@@ -262,6 +276,7 @@ sub Message
   my $msg = shift or return $me->{MESG};
   $me->{MESG} = $msg;
 } # end Message
+
 
 #******************************************************************************
 #* set/query debugging
@@ -274,6 +289,7 @@ sub Debug
   
 } # end Debug
 
+
 #******************************************************************************
 #* set/query the port number
 #******************************************************************************
@@ -285,6 +301,7 @@ sub Port
   $me->{PORT} = $port;
 
 } # end port
+
 
 #******************************************************************************
 #* set/query the host
@@ -311,6 +328,7 @@ sub Host
   1;
 } # end host
 
+
 #******************************************************************************
 #* query the socket to use as a file handle
 #******************************************************************************
@@ -318,6 +336,7 @@ sub Socket {
   my $me = shift;
   return $me->{'SOCK'};
 }
+
 
 #******************************************************************************
 #* set/query the USER
@@ -330,6 +349,7 @@ sub User
   
 } # end User
 
+
 #******************************************************************************
 #* set/query the password
 #******************************************************************************
@@ -340,6 +360,7 @@ sub Pass
   $me->{PASS} = $pass;
   
 } # end Pass
+
 
 #******************************************************************************
 #* 
@@ -356,6 +377,7 @@ sub Count
     
 } # end Count
 
+
 #******************************************************************************
 #* set/query the size of the mailbox
 #******************************************************************************
@@ -371,6 +393,7 @@ sub Size
   
 } # end Size
 
+
 #******************************************************************************
 #* 
 #******************************************************************************
@@ -378,6 +401,7 @@ sub EOL {
   my $me = shift;
   return $me->{'EOL'};
 }
+
 
 #******************************************************************************
 #* 
@@ -394,6 +418,7 @@ sub Close
   }
   1;
 } # end Close
+
 
 #******************************************************************************
 #* 
@@ -441,8 +466,11 @@ sub Connect
   
 } # end Connect
 
+
 #******************************************************************************
-#* 
+#* login to the POP server.  If the AUTH_MODE is set to APOP an the
+#* server supports it, it will use APOP.  Otherwise uid and password are
+#* sent in clear text.
 #******************************************************************************
 sub Login
 {
@@ -451,6 +479,10 @@ sub Login
   else { $me->Login_Pass; }
 }
 
+
+#******************************************************************************
+#* login to the POP server using APOP (md5) authentication.
+#******************************************************************************
 sub Login_APOP
 {
   require MD5;
@@ -471,6 +503,10 @@ sub Login_APOP
   $me->POPStat() or return 0;
 }
 
+
+#******************************************************************************
+#* login to the POP server using simple (cleartext) authentication.
+#******************************************************************************
 sub Login_Pass
 {
   my $me = shift;
@@ -496,31 +532,39 @@ sub Login_Pass
   
 } # end Login
 
+
 #******************************************************************************
-#* Get the Head of a message number
+#* Get the Head of a message number.  If you give an optional number
+#* of lines you will get the first n lines of the body also.  This
+#* allows you to preview a message.
 #******************************************************************************
 sub Head
 {
   my $me = shift;
   my $num = shift;
+  my $lines = shift;
+  $lines ||= 0;
+  $lines =~ /\d+/ || ($lines = 0);
   my $header = '';
   my $s = $me->{SOCK};
   
-  $me->Debug and print "TOP $num 0\n";
-  print $s "TOP $num 0", $me->EOL;
+  $me->Debug and carp "POP3: TOP $num $lines\n";
+  print $s "TOP $num $lines", $me->EOL;
   my $line = <$s>;
-  $me->Debug and print $line;
+  $me->Debug and carp "POP3: $line";
   chomp $line;
   $line =~ /^\+OK/ or $me->Message("Bad return from TOP: $line") and return '';
   $line =~ /^\+OK (\d+) / and $buflen = $1;
   
   do {
     $line = <$s>;
-    $line =~ /^\s*$|^\.\s*$/ or $header .= $line;
+#    $line =~ /^\s*$|^\.\s*$/ or $header .= $line;
+    $line =~ /^\.\s*$/ or $header .= $line;
   } until $line =~ /^\.\s*$/;
   
 	return wantarray ? split(/\r?\n/, $header) : $header;
 } # end Head
+
 
 #******************************************************************************
 #* Get the header and body of a message
@@ -532,10 +576,10 @@ sub HeadAndBody
   my $mandb = '';
   my $s = $me->{SOCK};
   
-  $me->Debug and print "RET $num\n";
+  $me->Debug and carp "POP3: RETR $num\n";
   print $s "RETR $num", $me->EOL;
   my $line = <$s>;
-  $me->Debug and print $line;
+  $me->Debug and carp "POP3: $line";
   chomp $line;
   $line =~ /^\+OK/ or $me->Message("Bad return from RETR: $line") and return '';
   $line =~ /^\+OK (\d+) / and $buflen = $1;
@@ -549,6 +593,7 @@ sub HeadAndBody
   
 } # end HeadAndBody
 
+
 #******************************************************************************
 #* get the body of a message
 #******************************************************************************
@@ -559,10 +604,10 @@ sub Body
   my $body = '';
   my $s = $me->{SOCK};
   
-  $me->Debug and print "RET $num\n";
+  $me->Debug and carp "POP3: RETR $num\n";
   print $s "RETR $num", $me->EOL;
   my $line = <$s>;
-  $me->Debug and print $line;
+  $me->Debug and carp "POP3: $line";
   chomp $line;
   $line =~ /^\+OK/ or $me->Message("Bad return from RETR: $line") and return '';
   $line =~ /^\+OK (\d+) / and $buflen = $1;
@@ -581,6 +626,7 @@ sub Body
   
 } # end Body
 
+
 #******************************************************************************
 #* handle a STAT command
 #******************************************************************************
@@ -597,6 +643,7 @@ sub POPStat {
   return $me->Count();
 }
 
+
 #******************************************************************************
 #* issue the LIST command
 #******************************************************************************
@@ -609,10 +656,10 @@ sub List {
   my $s = $me->Socket;
   $me->Alive() or return;
   
-  local @retarray = ();
-  local $ret = '';
+  my @retarray = ();
+  my $ret = '';
   
-  $me->Debug and carp "POP3: List $num";
+  $me->Debug and carp "POP3: $CMD $num";
   print $s "$CMD $num", $me->EOL;
   my $line = <$s>;
   $line =~ /^\+OK/ or $me->Message("$line") and return;
@@ -631,39 +678,14 @@ sub List {
   }
 }
 
+
 #******************************************************************************
-#* retrieve the given message number
+#* retrieve the given message number - uses HeadAndBody
 #******************************************************************************
 sub Retrieve {
-  my $me = shift;
-  my $num = shift || return;
-  
-  $me->Alive or return;
-  
-  my $s = $me->Socket;
-  
-  
-  local @retarray = ();
-  local $ret = '';
-  
-  $me->Debug and print STDERR "DEBUG: RETR $num", $me->EOL;
-  print $s "RETR $num", $me->EOL;
-  my $line = <$s>;
-  $line =~ /^\+OK\s*/ or $me->Message($line) and return;
-  
-  while( defined( $line = <$s> ) ) {
-    $me->Debug and print STDERR "DEBUG: $line";
-    $line =~ /^\.\s*$/ and last;
-    $ret .= $line;
-    chomp $line;
-    push(@retarray, $line);
-  }
-  if ($ret) {
-    return wantarray ? @retarray : $ret;
-  }
-  
-  return;
+  return HeadAndBody( @_ );
 }
+
 
 #******************************************************************************
 #* implement the LAST command - see the rfc (1081)
@@ -673,11 +695,13 @@ sub Last {
   
   my $s = $me->Socket;
   
+  $me->Debug and carp "POP3: LAST (obsolete)";
   print $s "LAST", $me->EOL;
   my $line = <$s>;
   
   $line =~ /\+OK (\d+)\s*$/ and return $1;
 }
+
 
 #******************************************************************************
 #* reset the deletion stat
@@ -686,26 +710,64 @@ sub Reset {
   my $me = shift;
   
   my $s = $me->Socket;
+  $me->Debug and carp "POP3: RSET";
   print $s "RSET", $me->EOL;
   my $line = <$s>;
   $line =~ /\+OK .*$/ and return 1;
   return 0;
 }
 
+
 #******************************************************************************
-#* 
+#* delete the given message number
 #******************************************************************************
 sub Delete {
   my $me = shift;
   my $num = shift || return;
   
   my $s = $me->Socket;
+  $me->Debug and carp "POP3: DELE $num";
   print $s "DELE $num",  $me->EOL;
   my $line = <$s>;
   $me->Message($line);
   $line =~ /^\+OK / && return 1;
   return 0;
 }
+
+
+#******************************************************************************
+#* UIDL - submitted by Dion Almaer (dion@member.com)
+#******************************************************************************
+sub Uidl {
+  my $me = shift;
+  my $num = shift || '';
+  
+  my $s = $me->Socket;
+  $me->Alive() or return;
+  
+  my @retarray = ();
+  my $ret = '';
+  
+  $me->Debug and carp "POP3: UIDL $num";
+  print $s "UIDL $num", $me->EOL;
+  my $line = <$s>;
+  $line =~ /^\+OK/ or $me->Message($line) and return;
+  if ($num) {
+    $line =~ s/^\+OK\s*//;
+    return $line;
+  }
+  while( defined( $line = <$s> ) ) {
+    $line =~ /^\.\s*$/ and last;
+    $ret .= $line;
+    chomp $line;
+    my ($num, $uidl) = split ' ', $line;
+    $retarray[$num] = $uidl;
+  }
+  if ($ret) {
+    return wantarray ? @retarray : $ret;
+  }
+}
+
 
 # end package Mail::POP3Client
 
